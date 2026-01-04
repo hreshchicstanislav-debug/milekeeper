@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { addOdometerEntry } from '@/lib/actions/odometerActions';
 import { RU } from '@/lib/copy/ru';
@@ -52,7 +52,11 @@ export default function AddMileageForm() {
       setShowDate(false);
       setShowNote(false);
       setIsOpen(false);
-      router.refresh();
+      
+      // Use startTransition for smoother UI update
+      startTransition(() => {
+        router.refresh();
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : RU.mileageForm.errorFailedToAdd;
       // Переводим известные ошибки с сервера

@@ -6,7 +6,7 @@
  */
 
 import { unstable_cache } from 'next/cache';
-import { revalidateTag } from 'next/cache';
+import { revalidateTag, revalidatePath } from 'next/cache';
 import { createAdminClient } from '../supabase/adminClient';
 import { TAGS } from '../cache/tags';
 import type { OdometerEntry, OdometerEntryInput } from '../db/types';
@@ -193,6 +193,10 @@ export async function addOdometerEntry(
   revalidateTag(TAGS.odometerEntries, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate the home page path to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
   
   return data;
 }
