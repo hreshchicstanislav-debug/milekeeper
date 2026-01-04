@@ -127,12 +127,10 @@ const _getMaxMileageEntryCached = unstable_cache(
 );
 
 export async function getMaxMileageEntry(): Promise<OdometerEntry | null> {
-  // In dev mode, bypass cache to ensure fresh data
-  if (process.env.NODE_ENV !== 'production') {
-    return await _getMaxMileageEntry();
-  }
-  
-  return await _getMaxMileageEntryCached();
+  // Always bypass cache to ensure fresh data
+  // This is critical for accurate current mileage display across all pages
+  // The performance impact is minimal as this is a simple query with LIMIT 1
+  return await _getMaxMileageEntry();
 }
 
 /**
