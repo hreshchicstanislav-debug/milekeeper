@@ -1,4 +1,4 @@
-import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
+import { listServiceItems, listLastServiceEventsForItems, listLastServiceEventsByMaxMileage } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus, compareServiceUrgency } from '@/lib/service/calcServiceStatus';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
@@ -38,6 +38,15 @@ export default async function ItemsPage() {
     );
   });
   
+  // FIX: For 'km' mode items, get events with maximum mileage instead of latest date
+  const kmModeItemIds = items
+    .filter(item => item.measurement_mode === 'km')
+    .map(item => item.id);
+  
+  const kmModeEventsByMaxMileage = kmModeItemIds.length > 0
+    ? await listLastServiceEventsByMaxMileage(kmModeItemIds)
+    : {};
+  
   // Сопоставляем элементы с их последними событиями и вычисляем статус для сортировки
   const currentMileage = latestOdometer?.mileage_km ?? null;
   const now = new Date();
@@ -48,7 +57,10 @@ export default async function ItemsPage() {
   const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
 
   const itemsWithStatus = items.map((item) => {
-    const lastEvent = lastEventsMap[item.id] || null;
+    // For km-mode, use event with max mileage; for calendar-mode, use date-based (from lastEventsMap)
+    const lastEvent = item.measurement_mode === 'km' 
+      ? (kmModeEventsByMaxMileage[item.id] ?? null)
+      : (lastEventsMap[item.id] ?? null);
     const statusResult = calcServiceStatus({
       serviceItem: item,
       latestOdometerMileageKm: currentMileage,

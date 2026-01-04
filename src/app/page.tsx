@@ -1,5 +1,5 @@
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
-import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
+import { listServiceItems, listLastServiceEventsForItems, listLastServiceEventsByMaxMileage } from '@/lib/actions/serviceActions';
 import { computeDailyRate, computeConfidence } from '@/lib/prediction/dailyRate';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
@@ -96,9 +96,35 @@ export default async function Home() {
     }
   }
 
+  // FIX: For 'km' mode items, get events with maximum mileage instead of latest date
+  // The SQL function selects by occurred_at DESC, which is wrong for km-mode
+  // We need to find events with maximum mileage_km for km-mode items
+  const kmModeItemIds = serviceItems
+    .filter(item => item.measurement_mode === 'km')
+    .map(item => item.id);
+  
+  const kmModeEventsByMaxMileage = kmModeItemIds.length > 0
+    ? await listLastServiceEventsByMaxMileage(kmModeItemIds)
+    : {};
+  
+  // Dev-only: log corrections for km-mode items
+  if (process.env.NODE_ENV !== 'production' && kmModeItemIds.length > 0) {
+    for (const itemId of kmModeItemIds) {
+      const maxMileageEvent = kmModeEventsByMaxMileage[itemId];
+      const dateBasedEvent = lastEventsMap[itemId];
+      if (maxMileageEvent && dateBasedEvent && maxMileageEvent.mileage_km > dateBasedEvent.mileage_km) {
+        const item = serviceItems.find(i => i.id === itemId);
+        console.warn(`[Home] Fixed lastEvent for ${item?.title || itemId}: using max mileage ${maxMileageEvent.mileage_km} km (was ${dateBasedEvent.mileage_km} km from date-based selection)`);
+      }
+    }
+  }
+
   // Compute status for each service item using new helper
   const itemsWithStatus: ServiceItemWithStatus[] = serviceItems.map((item) => {
-    const lastEvent = lastEventsMap[item.id] ?? null;
+    // For km-mode, use event with max mileage; for calendar-mode, use date-based (from lastEventsMap)
+    const lastEvent = item.measurement_mode === 'km' 
+      ? (kmModeEventsByMaxMileage[item.id] ?? null)
+      : (lastEventsMap[item.id] ?? null);
     
     // Use new calcServiceStatus helper with dailyKmRate for forecasting
     const statusResult = calcServiceStatus({
@@ -345,20 +371,30 @@ export default async function Home() {
     );
     
     if (kmItems.length > 0) {
-      kmItems.forEach(({ item, statusResult }) => {
+      kmItems.forEach(({ item, lastEvent, statusResult }) => {
         const status = statusResult!;
         const isIncluded = soonMaintenanceItems.some(listItem => listItem.id === item.id);
         const dailyKmRateUsed = status.dailyKmRateUsed ?? forecastDailyKmRate;
         // dailyKmRateUsed is set to 30 when fallback is used in calcServiceStatus
         const isFallback = dailyKmRateUsed === 30 && isFallbackRate;
         
+        // Get date-based event for comparison
+        const dateBasedEvent = lastEventsMap[item.id];
+        const maxMileageEvent = kmModeEventsByMaxMileage[item.id];
+        const eventMismatch = dateBasedEvent && maxMileageEvent && dateBasedEvent.mileage_km !== maxMileageEvent.mileage_km;
+        
         console.log(
           `[Home KM] ${item.title} | ` +
+          `lastEvent_mileage=${lastEvent?.mileage_km ?? 'null'} | ` +
+          `interval_km=${item.interval_km ?? 'null'} | ` +
+          `currentMileage=${currentMileage ?? 'null'} | ` +
           `remainingKm=${status.remainingKm?.toFixed(0) ?? 'null'} | ` +
           `remainingDays=${status.remainingDays?.toFixed(1) ?? 'null'} | ` +
           `notify=${item.notify_before_days} | ` +
           `rate=${dailyKmRateUsed.toFixed(1)}${isFallback ? '(fallback)' : ''} | ` +
-          `included=${isIncluded}`
+          `status=${status.status} | ` +
+          `included=${isIncluded}` +
+          (eventMismatch ? ` | ⚠️ EVENT_MISMATCH: date-based=${dateBasedEvent.mileage_km}km, max-mileage=${maxMileageEvent.mileage_km}km` : '')
         );
       });
     }
