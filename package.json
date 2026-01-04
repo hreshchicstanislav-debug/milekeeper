@@ -1,0 +1,42 @@
+{
+  "name": "mile_keeper",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
+    "dev:webpack": "next dev --no-turbo",
+    "dev:stable": "next dev --no-turbo",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link --project-ref nsmdouxbxajiyjqxgqml",
+    "supabase:db:push": "supabase db push",
+    "supabase:db:reset": "supabase db reset",
+    "supabase:fn:deploy": "supabase functions deploy",
+    "supabase:fn:serve": "supabase functions serve --env-file supabase/.env"
+  },
+  "_comment": "Note: supabase:login and supabase:link require manual authentication. Run 'npm run supabase:login' first if not already logged in.",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "next": "^16.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/node": "^20.0.0",
+    "typescript": "5.9.3",
+    "vitest": "^1.0.0"
+  }
+}

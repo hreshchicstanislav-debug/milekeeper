@@ -1,0 +1,2781 @@
+/* Global styles for MileKeeper - Mobile-first approach */
+
+/* CSS Variables */
+:root {
+  --tabbar-height: 72px; /* Height of bottom navigation bar (including safe area) */
+  --app-max-width: 430px; /* Maximum width for app container and all overlays/sheets */
+  
+  /* iOS-like Control System Tokens */
+  --control-height-sm: 44px; /* iOS minimum touch target */
+  --control-height-md: 52px; /* Standard button height */
+  --control-radius: 12px; /* Consistent border radius */
+  --control-padding-x: 16px; /* Horizontal padding */
+  --control-font-weight: 600; /* Button font weight */
+  --control-active-bg: rgba(0, 0, 0, 0.1); /* Active state background */
+  --control-disabled-opacity: 0.5; /* Disabled state opacity */
+  
+  /* Primary button colors */
+  --control-primary-bg: #007aff;
+  --control-primary-bg-hover: #0051d5;
+  --control-primary-bg-active: #0040b3;
+  
+  /* Secondary button colors */
+  --control-secondary-bg: #f5f5f5;
+  --control-secondary-bg-hover: #e0e0e0;
+  --control-secondary-bg-active: #d0d0d0;
+  --control-secondary-color: rgba(0, 0, 0, 0.7);
+  
+  /* Destructive button colors */
+  --control-destructive-bg: #ff3b30;
+  --control-destructive-bg-hover: #d70015;
+  --control-destructive-bg-active: #c00012;
+  
+  /* Link colors */
+  --control-link-color: #007aff;
+  --control-link-color-hover: #0051d5;
+  --control-link-color-active: #0040b3;
+  
+  /* Typography Scale (rem-based, Apple-like) */
+  --text-display: 2.5rem; /* 40px - Primary values (mileage) */
+  --text-title: 1.75rem; /* 28px - Page titles */
+  --text-heading: 1.5rem; /* 24px - Section headings */
+  --text-sheet-title: 1.375rem; /* 22px - Bottom sheet titles (iOS-like) */
+  --text-subheading: 1.25rem; /* 20px - Subheadings */
+  --text-body: 1rem; /* 16px - Body text, buttons */
+  --text-sub: 0.9375rem; /* 15px - Secondary text */
+  --text-caption: 0.875rem; /* 14px - Labels, captions */
+  --text-small: 0.8125rem; /* 13px - Help text, meta */
+  --text-micro: 0.75rem; /* 12px - Tiny labels, badges */
+  
+  /* Line Heights */
+  --lh-tight: 1.2; /* Titles, primary values */
+  --lh-sheet-title: 1.2; /* Sheet titles - tight for clean wrapping */
+  --lh-normal: 1.35; /* Headings, buttons */
+  --lh-relaxed: 1.5; /* Body text */
+  
+  /* Font Weights */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  
+  /* Vertical Rhythm Spacing (deprecated - use --sp-* instead) */
+  --vr-1: 0.25rem; /* 4px */
+  --vr-2: 0.5rem; /* 8px */
+  --vr-3: 0.75rem; /* 12px */
+  --vr-4: 1rem; /* 16px */
+  --vr-5: 1.5rem; /* 24px */
+  
+  /* 8pt Spacing System (Apple-like) */
+  --sp-1: 0.25rem; /* 4px */
+  --sp-2: 0.5rem; /* 8px */
+  --sp-3: 0.75rem; /* 12px */
+  --sp-4: 1rem; /* 16px */
+  --sp-5: 1.5rem; /* 24px */
+  --sp-6: 2rem; /* 32px */
+  
+  /* Layout Constants */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --row-h: 52px; /* Standard row height */
+  --divider: rgba(0, 0, 0, 0.08); /* Standard divider color */
+  --divider-inset: 16px; /* Standard divider left/right inset */
+  --row-pressed-bg: rgba(0, 0, 0, 0.06); /* Pressed state background for tappable rows */
+  
+  /* iOS-like Background/Surface System */
+  --app-bg: #f2f2f7; /* iOS systemGroupedBackground equivalent */
+  --surface-bg: #ffffff; /* White surface for grouped lists/cards */
+  --surface-border: rgba(0, 0, 0, 0.08); /* Light border for surfaces - iOS subtlety */
+}
+
+/* Simple reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--app-bg, #f2f2f7); /* iOS grouped background */
+}
+
+/* App container - centered mobile container for desktop, full width on mobile */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  margin: 0 auto;
+  max-width: var(--app-max-width, 430px);
+  background-color: var(--app-bg, #f2f2f7); /* iOS grouped background */
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  position: relative; /* Required for absolute positioning of modal overlay */
+}
+
+/* Main content area */
+.app-main {
+  flex: 1;
+  padding: var(--sp-4, 1rem);
+  padding-bottom: calc(var(--sp-4, 1rem) + 80px); /* Bottom padding for nav + content padding */
+  padding-top: env(safe-area-inset-top, 0);
+  padding-left: env(safe-area-inset-left, var(--sp-4, 1rem));
+  padding-right: env(safe-area-inset-right, var(--sp-4, 1rem));
+  min-height: calc(100dvh - 80px); /* Full height minus nav */
+}
+
+/* Route-specific: Item Details page - constrain app shell to prevent body scroll */
+.app-container:has(.item-details-page-route) {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.app-main:has(.item-details-page-route) {
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  max-height: calc(100dvh - var(--tabbar-height, 72px) - env(safe-area-inset-bottom, 0px));
+  min-height: 0;
+  height: 100%;
+  /* Keep horizontal padding for safe-area insets */
+  padding-left: env(safe-area-inset-left, var(--sp-4, 1rem));
+  padding-right: env(safe-area-inset-right, var(--sp-4, 1rem));
+}
+
+/* Page header - iOS Large Title pattern */
+.page-header {
+  padding-top: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem));
+  padding-left: var(--sp-4, 1rem);
+  padding-right: var(--sp-4, 1rem);
+  padding-bottom: 0;
+  margin-bottom: var(--sp-4, 1rem);
+}
+
+.page-header h1 {
+  font-size: var(--text-title, 1.75rem);
+  font-weight: var(--fw-bold, 700);
+  line-height: var(--lh-tight, 1.2);
+  color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+}
+
+/* Page content */
+.page-content {
+  color: rgba(0, 0, 0, 0.85);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  padding-left: var(--sp-4, 1rem);
+  padding-right: var(--sp-4, 1rem);
+}
+
+/* Home screen: enforce single viewport constraint (no vertical overflow) */
+.page-content.home-content {
+  /* Calculate available height for Home content:
+     - Start with 100dvh (full dynamic viewport height)
+     - Subtract safe-area insets (top and bottom)
+     - Subtract page header: padding-top (safe-area-top) + h1 height (~1.75rem ≈ 28px) + margin-bottom (1.5rem ≈ 24px) ≈ 52px + safe-area-top
+     - Subtract bottom nav: 72px base + safe-area-bottom
+     - Note: app-main padding (1rem top/bottom) is already accounted in layout flow
+     - Using more precise calculation: 100dvh - header - nav - safe-areas
+  */
+  max-height: calc(
+    100dvh 
+    - env(safe-area-inset-top, 0) 
+    - env(safe-area-inset-bottom, 0) 
+    - 52px /* page header: h1 (1.75rem ≈ 28px) + margin-bottom (1.5rem ≈ 24px) */
+    - 72px /* bottom nav base height (--tabbar-height) */
+    - 2rem /* app-main vertical padding (1rem top + 1rem bottom) */
+  );
+  overflow-y: hidden; /* Prevent vertical scrolling when collapsed */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  display: flex;
+  flex-direction: column;
+}
+
+/* When dev panel is expanded: make .page-content.home-content a scroll container */
+/* This allows scrolling within Home content only, not the entire page */
+.page-content.home-content[data-dev-expanded='true'] {
+  /* Use explicit height (not max-height) for iOS scroll to work */
+  height: calc(
+    100dvh 
+    - env(safe-area-inset-top, 0) 
+    - env(safe-area-inset-bottom, 0) 
+    - 52px /* page header */
+    - 72px /* bottom nav base height */
+    - 2rem /* app-main vertical padding */
+  );
+  max-height: none; /* Remove max-height constraint */
+  overflow-y: auto; /* Enable vertical scrolling */
+  -webkit-overflow-scrolling: touch; /* iOS smooth scrolling */
+  overflow-x: hidden; /* Keep horizontal overflow hidden */
+}
+
+/* Home adaptive content container */
+.home-adaptive-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-adaptive-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Home-only CSS variables for Apple-style polish */
+.page-content.home-content {
+  --home-radius: var(--radius-md, 16px);
+  --home-card-bg: #fff;
+  --home-surface-bg: rgba(0, 0, 0, 0.02);
+  --home-border: rgba(0, 0, 0, 0.1);
+  --home-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --home-gap: var(--sp-4, 1rem); /* 16px - iOS inset-grouped section gap */
+  --home-pad: var(--sp-4, 1rem); /* 16px */
+  --home-row-height: var(--row-h, 52px);
+  --home-divider: var(--divider, rgba(0, 0, 0, 0.08));
+}
+
+/* Home layout: consistent vertical spacing */
+.page-content.home-content {
+  gap: var(--home-gap);
+}
+
+/* Home: Current Mileage Card - iOS style */
+.page-content.home-content .mileage-card {
+  background: var(--surface-bg, #ffffff); /* White surface */
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08)); /* Light border - iOS subtlety */
+  border-radius: var(--home-radius);
+  padding: var(--sp-4, 1rem);
+  margin: 0;
+  box-shadow: var(--home-shadow);
+  text-align: left;
+  color: #1a1a1a;
+  cursor: default; /* Non-interactive informational card */
+}
+
+.page-content.home-content .mileage-label {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.6);
+  margin-bottom: var(--vr-2, 0.5rem);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.page-content.home-content .mileage-value {
+  font-size: var(--text-display, 2.5rem);
+  font-weight: var(--fw-bold, 700);
+  line-height: var(--lh-tight, 1.2);
+  margin-bottom: var(--vr-2, 0.5rem);
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-content.home-content .mileage-date {
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Home: Add Mileage Section - iOS primary button style */
+.page-content.home-content .add-mileage-section {
+  margin: 0;
+}
+
+.page-content.home-content .add-mileage-button {
+  width: 100%;
+  height: 52px;
+  background-color: #007aff;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.page-content.home-content .add-mileage-button:hover {
+  background-color: #0051d5;
+  transform: none;
+  box-shadow: none;
+}
+
+.page-content.home-content .add-mileage-button:active {
+  background-color: #0040b3;
+  transform: scale(0.98);
+}
+
+/* Home: Soon Maintenance Block - iOS inset-grouped list style */
+/* Mobile-first: base styles apply to all viewports */
+.soon-maintenance-section {
+  margin-top: var(--sp-4, 1rem); /* 16px - consistent section gap */
+}
+
+.soon-maintenance-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  margin: 0;
+  margin-bottom: var(--sp-2, 0.5rem); /* 8px gap before grouped list */
+  padding: 0 var(--home-pad, 1rem);
+}
+
+.soon-maintenance-group {
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+  margin-left: var(--home-pad, 1rem);
+  margin-right: var(--home-pad, 1rem);
+}
+
+.soon-maintenance-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.soon-maintenance-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem); /* 12px vertical, 16px horizontal - iOS-like density */
+  min-height: var(--control-height-sm, 44px);
+  position: relative;
+  cursor: default; /* Non-interactive informational row */
+  overflow: visible; /* Ensure right meta is not clipped on small screens */
+}
+
+.soon-maintenance-row:not(.last)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: var(--sp-4, 1rem);
+  right: var(--sp-4, 1rem);
+  height: 1px;
+  background: var(--divider, rgba(0, 0, 0, 0.08));
+  z-index: 1;
+}
+
+/* Home Soon Maintenance — prevent right meta from clipping on small screens */
+.soon-maintenance-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem); /* Reduced from sp-4 to sp-3 for better mobile fit */
+  width: 100%;
+  min-width: 0; /* Critical: allow row to shrink on small screens */
+}
+
+.soon-maintenance-row-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  flex: 1;
+  min-width: 0; /* Critical: allow title to shrink and truncate */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soon-maintenance-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  flex-shrink: 0; /* Critical: prevent right meta from shrinking */
+  flex-wrap: nowrap;
+  white-space: nowrap; /* Ensure ETA/status stay on one line */
+}
+
+.soon-maintenance-eta {
+  font-size: var(--text-caption, 0.8125rem); /* 13px */
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: var(--text-secondary, rgba(0, 0, 0, 0.65));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.soon-maintenance-status {
+  font-size: var(--text-caption, 0.8125rem); /* 13px */
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(255, 59, 48, 0.85); /* iOS destructive red, subtle */
+  white-space: nowrap;
+}
+
+/* Home: Upcoming Dashboard - iOS grouped list style */
+.page-content.home-content .upcoming {
+  margin-top: var(--sp-4, 1rem); /* 16px - consistent section gap */
+  background: var(--surface-bg, #ffffff); /* White surface */
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08)); /* Light border - iOS subtlety */
+  border-radius: var(--home-radius);
+  overflow: hidden;
+  box-shadow: var(--home-shadow);
+}
+
+/* Hide empty upcoming section (no items and no empty state) */
+.page-content.home-content .upcoming:has(.upcoming-list:empty):not(:has(.upcoming-empty)) {
+  display: none;
+}
+
+.page-content.home-content .upcoming h2 {
+  padding: var(--sp-4, 1rem);
+  padding-bottom: var(--sp-3, 0.75rem);
+}
+
+.page-content.home-content .upcoming h2 {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  margin: 0;
+  padding: var(--home-pad);
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--home-divider);
+}
+
+.page-content.home-content .upcoming-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content.home-content .upcoming-row {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  min-height: var(--home-row-height);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: var(--home-pad);
+  padding-right: var(--home-pad);
+  border-bottom: 1px solid var(--home-divider);
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.page-content.home-content .upcoming-row:last-child {
+  border-bottom: none;
+}
+
+.page-content.home-content .upcoming-row:active {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.page-content.home-content .upcoming-row.overdue {
+  background: transparent;
+  border-color: transparent;
+}
+
+.page-content.home-content .upcoming-row.overdue:active {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.page-content.home-content .upcoming-row.soon {
+  background: transparent;
+  border-color: transparent;
+}
+
+.page-content.home-content .upcoming-row.soon:active {
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+.page-content.home-content .upcoming-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--home-pad);
+  min-height: var(--home-row-height);
+}
+
+.page-content.home-content .upcoming-row-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-content.home-content .upcoming-badge {
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-tight, 1.2);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: none;
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.page-content.home-content .upcoming-row-meta {
+  margin-top: var(--vr-1, 0.25rem);
+  margin-bottom: var(--vr-2, 0.5rem);
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-relaxed, 1.5);
+  display: flex;
+  gap: 0.375rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  color: rgba(0, 0, 0, 0.65);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-content.home-content .upcoming-metric-days,
+.page-content.home-content .upcoming-metric-km {
+  font-weight: 500;
+}
+
+.page-content.home-content .upcoming-cta {
+  display: block;
+  padding: var(--home-pad);
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #007aff;
+  text-decoration: none;
+  border-top: 1px solid var(--home-divider);
+  transition: background-color 0.15s ease;
+}
+
+.page-content.home-content .upcoming-cta:active {
+  background-color: rgba(0, 122, 255, 0.08);
+}
+
+.page-content.home-content .upcoming-empty {
+  padding: var(--home-pad);
+  text-align: center;
+}
+
+.page-content.home-content .upcoming-empty p {
+  font-size: var(--text-sub, 0.9375rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.7);
+  margin: 0;
+}
+
+.page-content.home-content .upcoming-empty-hint {
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: var(--vr-2, 0.5rem);
+}
+
+/* Home: Prediction Hint - iOS info style */
+.page-content.home-content .prediction-hint {
+  margin: 0;
+  padding: var(--home-pad);
+  background: var(--home-surface-bg);
+  border-radius: var(--home-radius);
+  border: 1px solid var(--home-border);
+}
+
+.page-content.home-content .prediction-hint-text {
+  margin: 0;
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.page-content p {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Sheet (Bottom Modal) CSS Variables */
+.modal-content {
+  --sheet-radius: 20px;
+  --sheet-surface-bg: #fff;
+  --sheet-border: rgba(0, 0, 0, 0.1);
+  --sheet-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  --sheet-divider: rgba(0, 0, 0, 0.08);
+  --sheet-header-height: 56px;
+  --sheet-grabber-size: 36px;
+  --sheet-grabber-height: 5px;
+  /* Sheet padding tokens - iOS-like 16px baseline, adaptive for wide screens */
+  --sheet-content-pad-x: var(--sp-4, 1rem); /* 16px - iOS grouped/list baseline */
+  --sheet-content-pad-y: var(--sp-5, 1.5rem); /* 24px - vertical rhythm */
+  --sheet-header-pad-x: var(--sp-4, 1rem); /* 16px - matches content baseline */
+}
+
+/* Adaptive padding for wide screens: increase to 20-24px only when viewport is wide AND sheet is max-width constrained */
+@media (min-width: 430px) {
+  .modal-content,
+  .add-mileage-form {
+    --sheet-content-pad-x: var(--sp-5, 1.5rem); /* 24px - more readable on wide screens */
+    --sheet-header-pad-x: var(--sp-5, 1.5rem); /* 24px - matches content */
+  }
+}
+
+/* Sheet grabber - iOS style visual indicator */
+.sheet-grabber {
+  width: var(--sheet-grabber-size, 36px);
+  height: var(--sheet-grabber-height, 5px);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  margin: max(env(safe-area-inset-top, 0), var(--sp-2, 0.5rem)) auto var(--sp-3, 0.75rem);
+  flex-shrink: 0;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: var(--app-max-width, 430px);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background-color: #fff;
+  border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  padding: var(--sp-2, 0.5rem) 0;
+  padding-bottom: calc(var(--sp-2, 0.5rem) + env(safe-area-inset-bottom, 0));
+  z-index: 1000;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: rgba(0, 0, 0, 0.6);
+  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem);
+  border-radius: var(--control-radius, 12px);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  min-width: 60px;
+  min-height: var(--control-height-sm, 44px); /* Ensure minimum touch target */
+  gap: var(--sp-1, 0.25rem);
+}
+
+.nav-item:hover {
+  background-color: var(--control-secondary-bg, #f5f5f5);
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.nav-item:active {
+  background-color: var(--control-active-bg, rgba(0, 0, 0, 0.1));
+}
+
+.nav-item.active {
+  color: var(--control-primary-bg, #007aff);
+  background-color: rgba(0, 122, 255, 0.1);
+}
+
+.nav-icon {
+  font-size: var(--text-heading, 1.5rem);
+  line-height: 1;
+}
+
+.nav-label {
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-tight, 1.2);
+  text-align: center;
+}
+
+/* Mobile-first responsive typography */
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+p {
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #333;
+}
+
+/* Mileage Card */
+.mileage-card {
+  background: linear-gradient(135deg, #007aff 0%, #0051d5 100%);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.mileage-label {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  opacity: 0.9;
+  margin-bottom: var(--vr-2, 0.5rem);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mileage-value {
+  font-size: var(--text-display, 2.5rem);
+  font-weight: var(--fw-bold, 700);
+  line-height: var(--lh-tight, 1.2);
+  margin-bottom: var(--vr-2, 0.5rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.mileage-date {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  opacity: 0.8;
+}
+
+/* Add Mileage Section */
+.add-mileage-section {
+  margin-top: 1.5rem;
+}
+
+.add-mileage-button {
+  width: 100%;
+  background-color: var(--control-primary-bg, #007aff);
+  color: #fff;
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-md, 52px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-mileage-button:hover {
+  background-color: var(--control-primary-bg-hover, #0051d5);
+}
+
+.add-mileage-button:active {
+  background-color: var(--control-primary-bg-active, #0040b3);
+}
+
+/* Add Mileage Form */
+.add-mileage-form-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: var(--app-max-width, 430px);
+  margin-left: auto;
+  margin-right: auto;
+  background-color: rgba(0, 0, 0, 0.4); /* iOS-like subtle dim */
+  display: flex;
+  align-items: flex-end;
+  z-index: 2000;
+  padding: env(safe-area-inset-bottom, 0) env(safe-area-inset-right, 0) env(safe-area-inset-left, 0);
+  box-sizing: border-box;
+}
+
+.add-mileage-form {
+  background-color: #fff;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: var(--app-max-width, 430px);
+  margin: 0 auto;
+  max-height: 90dvh; /* Use dynamic viewport height for iOS keyboard support */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent form itself from scrolling */
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  /* Enable smooth transform for swipe-to-close */
+  transition: transform 0.3s ease-out;
+}
+
+/* Form header - sticky at top */
+.form-header {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  background: var(--sheet-surface-bg, #fff);
+  z-index: 10;
+  border-bottom: 1px solid var(--sheet-divider, rgba(0, 0, 0, 0.08));
+  flex-shrink: 0;
+}
+
+.form-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center; /* Center-align row items for consistent baseline */
+  padding: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem)) var(--sheet-header-pad-x, var(--sp-4, 1rem)) var(--sp-4, 1rem);
+  gap: var(--sp-3, 0.75rem);
+  min-height: 44px; /* Ensure minimum height for touch targets and visual stability */
+}
+
+.form-header h2 {
+  font-size: var(--text-sheet-title, 1.375rem); /* 22px - iOS-like sheet title */
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-sheet-title, 1.2); /* Tight line-height for clean wrapping */
+  color: #1a1a1a;
+  margin: 0; /* No random margins - spacing driven by container padding */
+  flex: 1;
+  min-width: 0;
+  /* Allow line-wrap for long titles, prevent truncation */
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  /* Reserve space for close button (44px + 12px gap = 56px) to prevent wrapping under button */
+  max-width: calc(100% - 56px);
+}
+
+/* Form content area - scrollable */
+.form-content {
+  flex: 1 1 auto; /* Changed from flex: 1 to avoid iOS flex sizing issues */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* iOS smooth scrolling */
+  padding: var(--sheet-content-pad-y, var(--sp-5, 1.5rem)) var(--sheet-content-pad-x, var(--sp-4, 1rem));
+  min-height: 0; /* Critical for flex scroll to work */
+}
+
+/* First form-field in form-content should not have extra top margin */
+.form-content > .form-field:first-child {
+  margin-top: 0;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  padding: 0;
+  min-width: var(--control-height-sm, 44px);
+  min-height: var(--control-height-sm, 44px);
+  width: var(--control-height-sm, 44px);
+  height: var(--control-height-sm, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--control-radius, 12px);
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+  line-height: 1;
+  /* Align to center of first title line when title is multi-line */
+  align-self: center;
+}
+
+.close-button:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+.close-button:active {
+  background-color: var(--control-active-bg, rgba(0, 0, 0, 0.1));
+}
+
+.error-message {
+  background-color: #fee;
+  color: #c33;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem); /* Use consistent spacing tokens */
+  border-radius: var(--radius-sm, 12px); /* Use consistent radius token */
+  margin-bottom: var(--sp-4, 1rem);
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  border: 1px solid #fcc;
+}
+
+.success-message {
+  background-color: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: rgb(22, 163, 74);
+  padding: var(--vr-3, 0.75rem) var(--control-padding-x, 16px);
+  border-radius: 8px;
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  margin-bottom: var(--vr-4, 1rem);
+}
+
+.form-field {
+  margin-bottom: var(--sp-5, 1.5rem);
+}
+
+/* iOS-like wheel picker for calendar interval */
+.wheel-picker {
+  display: flex;
+  gap: var(--sp-3, 0.75rem);
+  align-items: stretch;
+  margin: var(--sp-2, 0.5rem) 0;
+}
+
+.wheel-col {
+  flex: 1;
+  position: relative;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  min-height: 180px;
+}
+
+.wheel-scroll {
+  height: 180px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 72px 0; /* Top/bottom padding to center first/last items */
+}
+
+.wheel-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-item {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-tight, 1.2);
+  color: rgba(0, 0, 0, 0.55);
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.wheel-item.active {
+  color: rgba(0, 0, 0, 0.90);
+  font-weight: var(--fw-bold, 700);
+}
+
+.wheel-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 36px;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.03);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.wheel-fade-top {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 72px;
+  background: linear-gradient(to bottom, #fff, rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.wheel-fade-bot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  background: linear-gradient(to top, #fff, rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.wheel-label {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-tight, 1.2);
+  color: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.form-row {
+  display: flex;
+  gap: var(--sp-2, 0.5rem);
+  align-items: flex-start;
+}
+
+.form-field label {
+  display: block;
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.7);
+  margin-bottom: var(--sp-2, 0.5rem); /* Use consistent spacing token */
+}
+
+.form-help-text {
+  display: block;
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65); /* Consistent with secondary information color */
+}
+
+/* Segmented control for measurement mode */
+.segmented {
+  display: flex;
+  gap: var(--sp-2, 0.5rem);
+  padding: var(--sp-2, 0.5rem);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.segmented button {
+  flex: 1;
+  padding: 0 var(--control-padding-x, 16px);
+  border-radius: calc(var(--control-radius, 12px) - 4px);
+  border: 0;
+  background: transparent;
+  font-weight: var(--control-font-weight, 600);
+  font-size: var(--text-caption, 0.875rem);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  color: rgba(0, 0, 0, 0.7);
+  min-height: var(--control-height-sm, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.segmented button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.segmented button.active {
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.10);
+  color: var(--control-primary-bg, #007aff);
+}
+
+.segmented button:active:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.segmented button:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.field-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.4;
+}
+
+.mileage-input,
+.date-input,
+.note-input {
+  width: 100%;
+  padding: var(--vr-4, 1rem);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.mileage-input:focus,
+.date-input:focus,
+.note-input:focus {
+  outline: none;
+  border-color: #007aff;
+}
+
+.mileage-input:disabled,
+.date-input:disabled,
+.note-input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.note-input {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.toggle-button {
+  background: var(--control-secondary-bg, #f5f5f5);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-sub, 0.9375rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  color: var(--control-secondary-color, rgba(0, 0, 0, 0.7));
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+}
+
+.toggle-button:hover:not(:disabled) {
+  background-color: var(--control-secondary-bg-hover, #e0e0e0);
+  border-color: var(--control-primary-bg, #007aff);
+  color: var(--control-primary-bg, #007aff);
+}
+
+.toggle-button:active:not(:disabled) {
+  background-color: var(--control-secondary-bg-active, #d0d0d0);
+}
+
+.toggle-button:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+/* Form actions - sticky at bottom (moved from inline to sticky footer) */
+/* Hardened against keyboard: uses safe-area and viewport units */
+.form-actions {
+  display: flex;
+  gap: var(--sp-4, 1rem);
+  padding: var(--sp-4, 1rem) var(--sheet-header-pad-x, var(--sp-4, 1rem));
+  padding-bottom: calc(var(--sp-5, 1.5rem) + env(safe-area-inset-bottom, 0)); /* Account for safe area */
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 10;
+  border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  flex-shrink: 0;
+  /* Ensure footer stays above keyboard on iOS */
+  max-height: calc(100dvh - env(keyboard-inset-height, 0px));
+}
+
+.cancel-button,
+.submit-button {
+  flex: 1;
+  padding: 0 var(--control-padding-x, 16px);
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cancel-button {
+  background-color: var(--control-secondary-bg, #f5f5f5);
+  color: var(--control-secondary-color, rgba(0, 0, 0, 0.7));
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: var(--control-secondary-bg-hover, #e0e0e0);
+}
+
+.cancel-button:active:not(:disabled) {
+  background-color: var(--control-secondary-bg-active, #d0d0d0);
+}
+
+.submit-button {
+  background-color: var(--control-primary-bg, #007aff);
+  color: #fff;
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: var(--control-primary-bg-hover, #0051d5);
+}
+
+.submit-button:active:not(:disabled) {
+  background-color: var(--control-primary-bg-active, #0040b3);
+}
+
+.submit-button:disabled,
+.cancel-button:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.delete-button {
+  flex: 1;
+  padding: 0 var(--control-padding-x, 16px);
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  background-color: var(--control-destructive-bg, #ff3b30);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-button:hover:not(:disabled) {
+  background-color: var(--control-destructive-bg-hover, #d70015);
+}
+
+.delete-button:active:not(:disabled) {
+  background-color: var(--control-destructive-bg-active, #c00012);
+}
+
+.delete-button:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.delete-confirm-message {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #666;
+  line-height: 1.6;
+  padding: 1rem;
+  background-color: #fff5f5;
+  border-radius: 8px;
+  border-left: 3px solid #ff3b30;
+}
+
+/* History List */
+.history-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem);
+  margin-top: 0; /* Rely on page-header margin-bottom for first element spacing */
+  margin-bottom: var(--sp-4, 1rem); /* 16px - consistent section gap before grouped list */
+}
+
+.edit-latest-button {
+  width: 100%;
+  background-color: var(--control-secondary-bg, #f5f5f5);
+  color: var(--control-secondary-color, rgba(0, 0, 0, 0.7));
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-latest-button:hover:not(:disabled) {
+  background-color: var(--control-secondary-bg-hover, #e0e0e0);
+}
+
+.edit-latest-button:active:not(:disabled) {
+  background-color: var(--control-secondary-bg-active, #d0d0d0);
+}
+
+.edit-latest-button:active {
+  transform: translateY(0);
+}
+
+.delete-latest-button {
+  width: 100%;
+  background-color: var(--control-destructive-bg, #ff3b30);
+  color: #fff;
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-latest-button:hover:not(:disabled) {
+  background-color: var(--control-destructive-bg-hover, #d70015);
+}
+
+.delete-latest-button:active:not(:disabled) {
+  background-color: var(--control-destructive-bg-active, #c00012);
+}
+
+.delete-latest-button:hover {
+  background-color: #d70015;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
+}
+
+.delete-latest-button:active {
+  transform: translateY(0);
+}
+
+/* History List - iOS Grouped List Pattern */
+.history-list-group {
+  background: var(--surface-bg, #ffffff); /* White surface */
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08)); /* Light border - iOS subtlety */
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+  margin-top: 0; /* Rely on page-header margin-bottom or previous element for spacing */
+  margin-bottom: 0; /* Last element, no bottom margin needed */
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.history-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem); /* 12px vertical, 16px horizontal - iOS-like density */
+  min-height: var(--control-height-sm, 44px); /* Consistent row height for visual rhythm */
+  position: relative;
+  cursor: default; /* Non-interactive informational row */
+  transition: background-color 0.15s ease;
+}
+
+.history-row:not(.last)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: var(--sp-4, 1rem);
+  right: var(--sp-4, 1rem);
+  height: 1px;
+  background: var(--divider, rgba(0, 0, 0, 0.08));
+  z-index: 1; /* Ensure divider appears above pressed background (for consistency) */
+}
+
+/* History rows are non-interactive - no hover/active states */
+
+.history-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-4, 1rem);
+}
+
+.history-mileage {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.2;
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.history-date {
+  font-size: var(--text-caption, 0.875rem); /* 14px - consistent secondary role */
+  font-weight: var(--fw-regular, 400);
+  color: rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums; /* Preserved for numeric alignment */
+}
+
+.history-delta {
+  font-size: var(--text-small, 0.8125rem); /* 13px - consistent tertiary role */
+  font-weight: var(--fw-regular, 400); /* Regular, not medium - calmer metadata */
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65); /* Increased contrast from 0.5 to 0.65 for readability */
+  font-variant-numeric: tabular-nums; /* Preserved for numeric alignment */
+}
+
+.history-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.history-note {
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--sp-6, 2rem) var(--sp-4, 1rem);
+}
+
+.empty-state-message {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: var(--sp-5, 1.5rem);
+}
+
+.empty-state-link {
+  display: inline-block;
+  background-color: #007aff;
+  color: #fff;
+  text-decoration: none;
+  padding: 0.875rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  min-height: 48px;
+  line-height: 1.5;
+}
+
+.empty-state-link:hover {
+  background-color: #0051d5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.empty-state-link:active {
+  transform: translateY(0);
+}
+
+/* Service Items List - iOS Grouped List Pattern */
+.items-list-group {
+  background: var(--surface-bg, #ffffff); /* White surface */
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.10)); /* Light border - iOS subtlety */
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+  margin-top: 0; /* Rely on page-header margin-bottom for first group spacing */
+  margin-bottom: var(--sp-4, 1rem); /* 16px - consistent section gap */
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.service-item-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  min-height: var(--control-height-sm, 44px);
+  position: relative;
+  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem);
+}
+
+.service-item-row:not(.last)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: var(--sp-4, 1rem);
+  right: var(--sp-4, 1rem);
+  height: 1px;
+  background: var(--divider, rgba(0, 0, 0, 0.08));
+  z-index: 1; /* Ensure divider appears above pressed background */
+}
+
+.service-item-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row-chevron {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  color: rgba(0, 0, 0, 0.3);
+  line-height: 1;
+  margin-left: var(--sp-2, 0.5rem);
+  user-select: none;
+  pointer-events: none;
+}
+
+.service-item-row.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.service-item-row.clickable:active {
+  background-color: var(--row-pressed-bg, rgba(0, 0, 0, 0.06));
+}
+
+.service-item-row.clickable:focus-visible {
+  background-color: var(--row-pressed-bg, rgba(0, 0, 0, 0.06));
+  outline: 2px solid var(--control-primary-bg, #007aff);
+  outline-offset: -2px;
+}
+
+.service-item-row.clickable:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.service-item-title {
+  font-size: var(--text-subheading, 1.25rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  margin-bottom: var(--sp-2, 0.5rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-item-intervals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1, 0.25rem);
+  margin-bottom: var(--sp-2, 0.5rem);
+  font-size: var(--text-caption, 0.875rem); /* 14px - consistent secondary role */
+  font-weight: var(--fw-regular, 400); /* Regular, not medium - calmer metadata */
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.service-interval {
+  color: rgba(0, 0, 0, 0.65);
+  font-variant-numeric: tabular-nums;
+}
+
+.service-interval-separator {
+  color: #999;
+  font-weight: normal;
+}
+
+.service-item-note {
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: var(--text-caption, 0.875rem);
+  color: rgba(0, 0, 0, 0.65);
+  line-height: var(--lh-relaxed, 1.5);
+}
+
+.service-item-last-replacement {
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: var(--text-caption, 0.875rem); /* 14px - consistent secondary role */
+  font-weight: var(--fw-regular, 400); /* Regular, not medium - calmer metadata */
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65);
+  font-variant-numeric: tabular-nums; /* Preserved for numeric alignment */
+}
+
+.service-item-actions {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Modal overlay for edit form */
+/* Fixed positioning to cover entire viewport, uses 100dvh for iOS compatibility */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh; /* Use dynamic viewport height for iOS */
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end; /* Sheet slides up from bottom */
+  justify-content: center;
+  z-index: 2000; /* Above bottom-nav (1000) to ensure modal is visible */
+  padding: 0;
+}
+
+/* Full-screen bottom sheet container */
+.modal-content {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: 85dvh; /* Explicit height for iOS scroll container calculation */
+  max-height: 85dvh; /* Limit sheet height, leaving space at top */
+  background: #fff;
+  border-radius: 20px 20px 0 0; /* Rounded top corners */
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column; /* Flex column for header/content/footer structure */
+  overflow: hidden; /* Scroll only in body section - NEVER scroll modal-content itself */
+  overscroll-behavior: contain; /* Prevent scroll chaining */
+  min-height: 0; /* Critical for flex children to scroll on iOS */
+}
+
+/* When AddServiceItemForm is inside modal-content, override its container styles */
+.modal-content .add-mileage-form-container {
+  position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: 100%;
+  height: 100%; /* Explicit height for iOS scroll container calculation */
+  margin: 0;
+  background-color: transparent;
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.modal-content .add-mileage-form {
+  width: 100%;
+  max-width: 100%;
+  height: 100%; /* Explicit height for iOS scroll container calculation */
+  max-height: 100%;
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Ensure form-content can scroll inside modal-content on mobile */
+.modal-content .form-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+/* Form header inside modal-content: use flex instead of sticky */
+.modal-content .form-header {
+  position: static;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+/* Form actions inside modal-content: use flex instead of sticky */
+.modal-content .form-actions {
+  position: static;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+/* Limit modal width on desktop to match app container */
+@media (min-width: 430px) {
+  .modal-content {
+    max-width: var(--app-max-width, 430px);
+  }
+}
+
+/* Item Details Page (dedicated route, not modal) */
+.item-details-page-route {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-details-page-route .item-details-page {
+  /* занимает область экрана ВНУТРИ app shell */
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-details-page-shell {
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 520px;
+  padding: 0 var(--sp-4, 1rem);
+  padding-left: calc(var(--sp-4, 1rem) + env(safe-area-inset-left, 0));
+  padding-right: calc(var(--sp-4, 1rem) + env(safe-area-inset-right, 0));
+}
+
+.item-details-page-header,
+.item-details-page-tabs,
+.item-details-page-footer {
+  flex: 0 0 auto;
+}
+
+.item-details-page-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 0.75rem);
+  padding: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem)) var(--sp-4, 1rem) var(--sp-3, 0.75rem);
+  min-height: 44px;
+}
+
+.item-details-page-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  color: #007aff;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.item-details-page-back:hover {
+  background-color: rgba(0, 122, 255, 0.1);
+}
+
+.item-details-page-title-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-details-page-title {
+  font-size: var(--text-title, 1.75rem);
+  font-weight: var(--fw-bold, 700);
+  line-height: var(--lh-tight, 1.2);
+  color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.item-details-page-subtitle {
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: var(--vr-1, 0.25rem);
+}
+
+.item-details-page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding: var(--sp-4, 1rem) 0;
+  /* Add padding-bottom to prevent content from hiding under footer */
+  padding-bottom: calc(var(--sp-4, 1rem) + env(safe-area-inset-bottom, 0px));
+}
+
+.item-details-page-footer {
+  /* Pinned footer - always visible at bottom */
+  padding: var(--sp-4, 1rem) var(--sp-4, 1rem) calc(var(--sp-4, 1rem) + env(safe-area-inset-bottom, 0px));
+  background: var(--app-bg, #f2f2f7);
+  display: flex;
+  gap: var(--sp-4, 1rem);
+  align-items: stretch;
+  flex: 0 0 auto;
+  /* Ensure footer stays above tabbar */
+  position: relative;
+  z-index: 1;
+}
+
+/* Hide Next.js dev toast overlay only (safe, specific selector) */
+[data-nextjs-toast] {
+  display: none !important;
+}
+
+/* Items + Item Details (docs-driven) - Footer buttons: equal height and width */
+.item-details-page-footer > .btn,
+.item-details-page-footer > button,
+.item-details-page-footer a.btn {
+  flex: 1 1 0;
+  height: var(--control-height-sm, 44px);
+  min-height: var(--control-height-sm, 44px);
+  padding: 0 var(--control-padding-x, 16px);
+  border-radius: var(--control-radius, 12px);
+  font-weight: var(--control-font-weight, 600);
+  font-size: 0.9375rem;
+  line-height: 1;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make "Настройки" button match active tab color (like "Расчет" tab) */
+.item-details-page-footer > .btn-secondary {
+  background: rgba(0, 122, 255, 0.12);
+  border: 1px solid rgba(0, 122, 255, 0.4);
+  color: #007aff;
+}
+
+.item-details-page-footer > .btn-secondary:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.18);
+  border-color: rgba(0, 122, 255, 0.5);
+}
+
+.item-details-page-footer > .btn-secondary:active:not(:disabled) {
+  background: rgba(0, 122, 255, 0.24);
+  border-color: rgba(0, 122, 255, 0.6);
+}
+
+.item-details-page-footer .item-details-action-primary {
+  flex: 1 1 0;
+  display: flex;
+  min-width: 0;
+  height: var(--control-height-sm, 44px);
+  min-height: var(--control-height-sm, 44px);
+}
+
+.item-details-page-footer .item-details-action-primary > * {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Item Details Sheet Styles */
+/* Sticky header - always visible when scrolling */
+/* Header contains title row and tabs - both sticky together */
+.item-details-header {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+  flex-shrink: 0; /* Prevent header from shrinking */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column; /* Column layout: grabber, title row, tabs */
+}
+
+/* Header top row: title + close button */
+.item-details-header-row {
+  display: flex;
+  align-items: center; /* Center-align row items for consistent baseline */
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem);
+  padding: max(env(safe-area-inset-top, 0), var(--sp-3, 0.75rem)) var(--sheet-header-pad-x, var(--sp-4, 1rem)) var(--sp-3, 0.75rem);
+  min-height: 44px; /* Ensure minimum height for touch targets and visual stability */
+}
+
+/* Title wrapper in item-details-header-row - allows multi-line title + subtitle */
+.item-details-header-row > div:first-child {
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  /* Reserve space for close button (44px + 12px gap = 56px) */
+  max-width: calc(100% - 56px);
+}
+
+/* Details tabs - part of sticky header, no offset needed */
+.details-tabs {
+  display: flex;
+  gap: var(--sp-2, 0.5rem);
+  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem) var(--sp-3, 0.75rem);
+  background: var(--sheet-surface-bg, #fff);
+  border-top: 1px solid var(--sheet-divider, rgba(0, 0, 0, 0.08)); /* Visual separation from title row */
+  flex-shrink: 0;
+}
+
+.details-tab {
+  flex: 1;
+  padding: var(--sp-3, 0.75rem);
+  min-height: 44px; /* iOS minimum touch target */
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.details-tab:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.details-tab.active {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.4);
+  color: #007aff;
+  font-weight: 600;
+}
+
+.details-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 3px;
+  background: #007aff;
+  border-radius: 999px 999px 0 0;
+}
+
+.item-details-title {
+  font-size: var(--text-sheet-title, 1.375rem); /* 22px - iOS-like sheet title */
+  font-weight: var(--fw-semibold, 600); /* Semibold, not bold - calmer iOS look */
+  line-height: var(--lh-sheet-title, 1.2); /* Tight line-height for clean wrapping */
+  margin: 0; /* No random margins - spacing driven by container padding */
+  color: #1a1a1a;
+  /* Allow line-wrap for long titles, prevent truncation */
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.item-details-sub {
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: var(--vr-1, 0.25rem);
+}
+
+/* Scrollable body container - wraps tab content (History/Calc) */
+.item-details-body {
+  flex: 1 1 auto; /* Grow to fill available space, shrink if needed */
+  min-height: 0; /* Critical for flex scroll to work on iOS */
+  overflow-y: auto; /* Enable vertical scrolling */
+  -webkit-overflow-scrolling: touch; /* iOS smooth scrolling */
+  overscroll-behavior: contain; /* Prevent scroll chaining to page behind */
+  touch-action: pan-y; /* Allow vertical panning (scrolling) only */
+  /* Force hardware acceleration for smooth scrolling on iOS */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* History section - no longer the scroll container, just content */
+.item-history {
+  padding: var(--sheet-content-pad-y, var(--sp-5, 1.5rem)) var(--sheet-content-pad-x, var(--sp-4, 1rem)); /* Use sheet padding tokens */
+}
+
+.item-history-title {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  margin-bottom: var(--vr-2, 0.5rem);
+  color: #1a1a1a;
+}
+
+.item-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem); /* Aligned to 8pt grid */
+}
+
+.item-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  border: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  background: #fff;
+}
+
+.item-history-date {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.item-history-mileage {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-medium, 500);
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Sticky footer with actions - always accessible */
+.item-details-actions {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 2;
+  flex-shrink: 0; /* Prevent footer from shrinking */
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: var(--sp-3, 0.75rem) var(--sheet-header-pad-x, var(--sp-4, 1rem));
+  padding-bottom: calc(var(--sp-3, 0.75rem) + env(safe-area-inset-bottom, 0)); /* Account for safe area */
+  display: flex;
+  gap: var(--sp-3, 0.75rem);
+  align-items: stretch;
+}
+
+.item-details-actions .btn {
+  flex: 1;
+  padding: 0 var(--control-padding-x, 16px);
+  border-radius: var(--control-radius, 12px);
+  font-weight: var(--control-font-weight, 600);
+  font-size: 0.9375rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Details tabs - duplicate removed, using the one above */
+
+/* Calc view blocks */
+.calc-block {
+  border: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  border-radius: 14px;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  background: #fff;
+  margin-top: var(--sp-3, 0.75rem);
+}
+
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem);
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  align-items: center;
+}
+
+.calc-row .k {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.calc-row .v {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-semibold, 600);
+  color: rgba(0, 0, 0, 0.85);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-secondary {
+  background: var(--control-secondary-bg, #f5f5f5);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  color: var(--control-secondary-color, rgba(0, 0, 0, 0.7));
+  padding: 0 var(--control-padding-x, 16px);
+  min-height: var(--control-height-sm, 44px);
+  border-radius: var(--control-radius, 12px);
+  font-weight: var(--control-font-weight, 600);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--control-secondary-bg-hover, #e0e0e0);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: var(--control-secondary-bg-active, #d0d0d0);
+}
+
+.btn-secondary:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--control-primary-bg, #007aff);
+  color: #fff;
+  border: none;
+  padding: 0 var(--control-padding-x, 16px);
+  min-height: var(--control-height-sm, 44px);
+  border-radius: var(--control-radius, 12px);
+  font-weight: var(--control-font-weight, 600);
+  font-size: var(--text-sub, 0.9375rem);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--control-primary-bg-hover, #0051d5);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--control-primary-bg-active, #0040b3);
+}
+
+.btn-primary:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.item-details-actions .mark-replacement-button {
+  flex: 1;
+}
+
+.item-details-action-primary {
+  flex: 1;
+}
+
+/* Item history states - consistent styling */
+.item-history-loading,
+.item-history-error,
+.item-history-empty {
+  padding: 2rem var(--control-padding-x, 16px);
+  text-align: center;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+}
+
+.item-history-error {
+  color: #c33;
+}
+
+.item-history-hint {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+/* Delete item button in edit form */
+.delete-item-button {
+  margin-top: 0.625rem;
+  width: 100%;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: rgb(185, 28, 28);
+  padding: 0 var(--control-padding-x, 16px);
+  border-radius: var(--control-radius, 12px);
+  font-weight: var(--control-font-weight, 600);
+  font-size: var(--text-sub, 0.9375rem);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-item-button:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.20);
+  border-color: rgba(220, 38, 38, 0.50);
+}
+
+.delete-item-button:active:not(:disabled) {
+  background: rgba(220, 38, 38, 0.25);
+}
+
+.delete-item-button:disabled {
+  opacity: var(--control-disabled-opacity, 0.5);
+  cursor: not-allowed;
+}
+
+.delete-confirm-message {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: rgba(0, 0, 0, 0.7);
+  line-height: 1.5;
+}
+
+.mark-replacement-button {
+  width: 100%;
+  background-color: var(--control-primary-bg, #007aff);
+  color: #fff;
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--control-font-weight, 600);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mark-replacement-button:hover:not(:disabled) {
+  background-color: var(--control-primary-bg-hover, #0051d5);
+}
+
+.mark-replacement-button:active:not(:disabled) {
+  background-color: var(--control-primary-bg-active, #0040b3);
+}
+
+.mark-replacement-button:disabled {
+  background-color: var(--control-secondary-bg-hover, #e0e0e0);
+  color: rgba(0, 0, 0, 0.4);
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity, 0.5);
+}
+
+.mark-replacement-hint {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #999;
+  text-align: center;
+}
+
+.add-item-section {
+  margin-top: 1.5rem;
+}
+
+/* Prediction Confidence Hint */
+.prediction-hint {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  border-left: 3px solid #007aff;
+}
+
+.prediction-hint-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #666;
+  line-height: 1.5;
+}
+
+/* Upcoming Replacements Section */
+/* Upcoming Replacements - Compact Dashboard */
+.upcoming {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.upcoming h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.upcoming-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.upcoming-row {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 0.625rem 0.75rem;
+  background: #fff;
+  transition: all 0.2s ease;
+}
+
+.upcoming-row.overdue {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.upcoming-row.soon {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.upcoming-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem;
+}
+
+.upcoming-row-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #1a1a1a;
+  flex: 1;
+}
+
+.upcoming-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+  white-space: nowrap;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.upcoming-badge.overdue {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.10);
+  color: #dc2626;
+}
+
+.upcoming-badge.soon {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.overdue-badge {
+  background-color: #ff3b30;
+  color: #fff;
+}
+
+.upcoming-row-meta {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  display: flex;
+  gap: 0.375rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.upcoming-metric-days {
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.upcoming-metric-km {
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.upcoming-dot {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.upcoming-cta {
+  display: inline-block;
+  margin-top: 0.625rem;
+  padding: 12px var(--control-padding-x, 16px);
+  min-height: var(--control-height-sm, 44px);
+  font-size: 0.9375rem;
+  color: var(--control-link-color, #007aff);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  border-radius: var(--control-radius, 12px);
+  text-align: center;
+  cursor: pointer;
+}
+
+.upcoming-cta:hover {
+  color: var(--control-link-color-hover, #0051d5);
+  background-color: rgba(0, 122, 255, 0.08);
+}
+
+.upcoming-cta:active {
+  color: var(--control-link-color-active, #0040b3);
+  background-color: rgba(0, 122, 255, 0.12);
+}
+
+.upcoming-empty {
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.7);
+  padding: 0.625rem 0;
+  line-height: 1.5;
+}
+
+.upcoming-empty-hint {
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.55);
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+
+/* Dev Tools Panel */
+.dev-tools-section {
+  margin-top: var(--sp-6, 2rem);
+  padding-top: var(--sp-6, 2rem);
+  border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+}
+
+.dev-tools-panel {
+  background-color: #f8f9fa;
+  border: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-sm, 12px);
+  padding: var(--sp-4, 1rem);
+  font-size: 0.875rem;
+  /* Scroll margins for auto-scroll positioning within scroll container */
+  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  scroll-margin-bottom: calc(var(--tabbar-height, 72px) + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+.dev-tools-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dev-tools-toggle:hover {
+  color: #1a1a1a;
+}
+
+.dev-tools-content {
+  margin-top: var(--sp-4, 1rem);
+  padding-top: var(--sp-4, 1rem);
+  border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+}
+
+.dev-tools-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.dev-tools-button {
+  width: 100%;
+  background-color: var(--control-secondary-bg, #f5f5f5);
+  color: var(--control-secondary-color, rgba(0, 0, 0, 0.7));
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--control-radius, 12px);
+  padding: 0 var(--control-padding-x, 16px);
+  font-size: var(--text-sub, 0.9375rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  min-height: var(--control-height-sm, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dev-tools-button:hover:not(:disabled) {
+  background-color: var(--control-secondary-bg-hover, #e0e0e0);
+}
+
+.dev-tools-button:active:not(:disabled) {
+  background-color: var(--control-secondary-bg-active, #d0d0d0);
+}
+
+.dev-tools-button-primary {
+  background-color: var(--control-primary-bg, #007aff);
+  color: #fff;
+  border: none;
+}
+
+.dev-tools-button-primary:hover:not(:disabled) {
+  background-color: var(--control-primary-bg-hover, #0051d5);
+}
+
+.dev-tools-button-primary:active:not(:disabled) {
+  background-color: var(--control-primary-bg-active, #0040b3);
+}
+
+.dev-tools-button-danger {
+  background-color: var(--control-destructive-bg, #ff3b30);
+  color: #fff;
+  border: none;
+}
+
+.dev-tools-button-danger:hover:not(:disabled) {
+  background-color: var(--control-destructive-bg-hover, #d70015);
+}
+
+.dev-tools-button-danger:active:not(:disabled) {
+  background-color: var(--control-destructive-bg-active, #c00012);
+}
+
+.dev-tools-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dev-tools-button-primary {
+  background-color: #0066cc;
+  border-color: #0066cc;
+  color: #fff;
+  font-weight: 600;
+}
+
+.dev-tools-button-primary:hover:not(:disabled) {
+  background-color: #0052a3;
+  border-color: #0052a3;
+}
+
+.dev-tools-button-danger {
+  background-color: #fff5f5;
+  border-color: #ffcccc;
+  color: #cc0000;
+}
+
+.dev-tools-button-danger:hover:not(:disabled) {
+  background-color: #ffe8e8;
+  border-color: #ff9999;
+}
+
+.dev-tools-status {
+  margin-top: var(--sp-3, 0.75rem);
+  padding: var(--sp-3, 0.75rem);
+  background-color: #fff;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  color: #666;
+  line-height: 1.5;
+}
+
+.dev-tools-status.error {
+  background-color: #fff5f5;
+  color: #cc0000;
+  border: 1px solid #ffcccc;
+}
+
+/* Dev Odometer Preview */
+.dev-preview-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.dev-odometer-preview {
+  background-color: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 1rem;
+  font-size: 0.875rem;
+}
+
+.dev-odometer-preview-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #666;
+  margin: 0 0 0.75rem 0;
+}
+
+.dev-odometer-preview-empty {
+  margin: 0;
+  color: #999;
+  font-size: 0.8125rem;
+}
+
+.dev-odometer-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dev-odometer-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: #fff;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.dev-odometer-preview-date {
+  color: #666;
+  flex: 1;
+  min-width: 0;
+}
+
+.dev-odometer-preview-arrow {
+  color: #999;
+  font-weight: 300;
+}
+
+/* Toast notification system */
+/* Toast overlay: covers viewport but doesn't block interactions (pointer-events: none) */
+/* Toast card: has pointer-events: auto so it's clickable, but overlay allows clicks through to tabbar */
+/* z-index: 9999 ensures toast is above modals (2000) and tabbar (1000) */
+.toast-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none; /* Allows clicks through to tabbar and other UI */
+  z-index: 9999; /* Above modals (2000) and tabbar (1000) */
+}
+
+.toast-overlay.toast-open {
+  opacity: 1;
+}
+
+.toast-card {
+  background: #fff;
+  border-radius: var(--radius-md, 16px);
+  padding: var(--sp-4, 1rem) var(--sp-5, 1.5rem);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 280px;
+  max-width: 90vw;
+  pointer-events: auto;
+  transform: scale(0.9) translateY(-10px);
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.toast-card.toast-enter {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+.toast-card.toast-success {
+  border-left: 4px solid #10b981;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  color: #10b981;
+  width: 24px;
+  height: 24px;
+}
+
+.toast-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.toast-subtitle {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-relaxed, 1.5);
+  color: rgba(0, 0, 0, 0.65);
+  margin-top: var(--vr-1, 0.25rem);
+}
+
+.dev-odometer-preview-mileage {
+  color: #1a1a1a;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Desktop view - show centered mobile container */
+@media (min-width: 431px) {
+  .app-container {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    min-height: calc(100vh - 4rem);
+  }
+  
+  body {
+    background-color: #f5f5f5;
+  }
+
+  .add-mileage-form-container {
+    align-items: center;
+  }
+
+  .add-mileage-form {
+    border-radius: 20px;
+    max-height: 80vh;
+  }
+}
