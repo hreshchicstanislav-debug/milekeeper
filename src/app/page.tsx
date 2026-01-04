@@ -14,6 +14,10 @@ import Link from 'next/link';
 import { RU, formatNumber } from '@/lib/copy/ru';
 import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
 
+// Force dynamic rendering to ensure fresh data on every request
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type UrgencyStatus = 'OVERDUE' | 'SOON' | 'OK';
 
 interface ServiceItemWithStatus {

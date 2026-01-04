@@ -120,12 +120,14 @@ export async function createServiceItem(
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  revalidateTag(TAGS.odometer, 'max'); // Service items depend on odometer data
   
   // Also revalidate paths to ensure immediate UI update
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
   revalidatePath('/items', 'layout');
+  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -258,12 +260,14 @@ export async function updateServiceItem(
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  revalidateTag(TAGS.odometer, 'max'); // Service items depend on odometer data
   
   // Also revalidate paths to ensure immediate UI update
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
   revalidatePath('/items', 'layout');
+  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -307,12 +311,14 @@ export async function deleteServiceItem(id: string): Promise<{ success: boolean 
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  revalidateTag(TAGS.odometer, 'max'); // Service items depend on odometer data
   
   // Also revalidate paths to ensure immediate UI update
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
   revalidatePath('/items', 'layout');
+  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -374,11 +380,15 @@ export async function addServiceEvent(
   }
   
   // Invalidate cache tags after successful creation
+  // Use 'max' revalidation type for aggressive cache clearing on Vercel
   revalidateTag(TAGS.serviceEvents, 'max');
+  revalidateTag(TAGS.serviceItems, 'max'); // Also invalidate items cache
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  revalidateTag(TAGS.odometer, 'max'); // Service events depend on odometer data
   
   // Also revalidate paths to ensure immediate UI update
+  // Revalidate all relevant paths to clear Next.js page cache
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');

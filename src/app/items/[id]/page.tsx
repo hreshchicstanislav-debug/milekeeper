@@ -4,6 +4,10 @@ import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerA
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
 
+// Force dynamic rendering to ensure fresh data on every request
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;

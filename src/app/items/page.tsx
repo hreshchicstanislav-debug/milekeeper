@@ -6,6 +6,10 @@ import ItemsPageClient from './ItemsPageClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 
+// Force dynamic rendering to ensure fresh data on every request
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ItemsPage() {
   // Start DB profiler scope (dev-only)
   const profiler = startRequestScope('items');
