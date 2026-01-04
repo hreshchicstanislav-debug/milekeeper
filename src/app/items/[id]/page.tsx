@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { listServiceItems, listLastServiceEventsForItems, listLastServiceEventsByMaxMileage } from '@/lib/actions/serviceActions';
+import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
@@ -32,10 +32,8 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
   ]);
   
   // Get last event for this item
-  // FIX: For 'km' mode, use event with maximum mileage instead of latest date
-  const lastEvent = item.measurement_mode === 'km'
-    ? (await listLastServiceEventsByMaxMileage([item.id]))[item.id] ?? null
-    : (await listLastServiceEventsForItems([item.id]))[item.id] ?? null;
+  const lastEventsMap = await listLastServiceEventsForItems([item.id]);
+  const lastEvent = lastEventsMap[item.id] || null;
   
   // Compute forecast daily km rate
   const forecastResult = estimateDailyKmRate(odometerEntries);
