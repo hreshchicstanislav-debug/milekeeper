@@ -7,9 +7,9 @@
  * Thresholds configuration for soon maintenance eligibility
  */
 export interface SoonMaintenanceThresholds {
-  /** Maximum remaining km to qualify (for mileage mode) */
+  /** @deprecated Maximum remaining km to qualify - no longer used for km-mode (removed in favor of notify_before_days) */
   X_km: number;
-  /** Maximum remaining days to qualify */
+  /** Maximum remaining days to qualify (fallback when notify_before_days is not set) */
   Y_days: number;
   /** Maximum number of items to show */
   MAX_ITEMS: number;
@@ -91,11 +91,10 @@ export function shouldShowSoonMaintenanceBlock(
       return item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
     }
 
-    // For mileage mode: can qualify by remainingKm OR remainingDays
+    // For mileage mode: qualify only by remainingDays (predicted days based on avgDailyKm)
+    // Removed fixed 1200 km threshold - now depends on notify_before_days and driving pattern
     if (item.mode === 'km') {
-      const qualifiesByKm = item.remainingKm !== null && item.remainingKm <= thresholds.X_km;
-      const qualifiesByDays = item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
-      return qualifiesByKm || qualifiesByDays;
+      return item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
     }
 
     return false;
@@ -127,11 +126,10 @@ export function pickSoonMaintenanceItems(
       return item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
     }
 
-    // For mileage mode: can qualify by remainingKm OR remainingDays
+    // For mileage mode: qualify only by remainingDays (predicted days based on avgDailyKm)
+    // Removed fixed 1200 km threshold - now depends on notify_before_days and driving pattern
     if (item.mode === 'km') {
-      const qualifiesByKm = item.remainingKm !== null && item.remainingKm <= thresholds.X_km;
-      const qualifiesByDays = item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
-      return qualifiesByKm || qualifiesByDays;
+      return item.remainingDays !== null && item.remainingDays <= itemNotifyDays;
     }
 
     return false;

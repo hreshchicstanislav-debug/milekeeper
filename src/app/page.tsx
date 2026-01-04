@@ -303,6 +303,31 @@ export default async function Home() {
 
   const soonMaintenanceItems = pickSoonMaintenanceItems(soonMaintenanceInputs, DEFAULT_THRESHOLDS);
 
+  // Dev-only: Diagnostic log for overdue items that might not appear in soonMaintenanceItems
+  if (process.env.NODE_ENV !== 'production') {
+    const overdueItems = soonMaintenanceInputs.filter(item => item.isOverdue);
+    const overdueInList = soonMaintenanceItems.filter(item => item.isOverdue);
+    
+    if (overdueItems.length > 0) {
+      console.log('[Home] Overdue items analysis:', {
+        totalOverdue: overdueItems.length,
+        overdueInList: overdueInList.length,
+        overdueItems: overdueItems.map(item => ({
+          title: item.title,
+          status: item.status,
+          isOverdue: item.isOverdue,
+          remainingKm: item.remainingKm,
+          remainingDays: item.remainingDays,
+          mode: item.mode,
+        })),
+        overdueInListTitles: overdueInList.map(item => item.title),
+        missingOverdue: overdueItems
+          .filter(item => !overdueInList.find(listItem => listItem.id === item.id))
+          .map(item => item.title),
+      });
+    }
+  }
+
   // Dev-only: TEMP diagnostic log for 2 items (масло двигателя / масляный фильтр)
   // Logs EXACT values used in UI calculation
   if (process.env.NODE_ENV !== 'production') {
