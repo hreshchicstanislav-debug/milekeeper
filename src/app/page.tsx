@@ -86,6 +86,7 @@ export default async function Home() {
   // Returns EstimateResult with dailyKmRate (always > 0) and isFallback flag
   const forecastResult = estimateDailyKmRate(odometerEntries);
   const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
+  const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
   
   // Dev-only: ensure dailyKmRate is a number
   if (process.env.NODE_ENV !== 'production') {
@@ -303,27 +304,28 @@ export default async function Home() {
 
   const soonMaintenanceItems = pickSoonMaintenanceItems(soonMaintenanceInputs, DEFAULT_THRESHOLDS);
 
-  // Dev-only: Diagnostic log for overdue items that might not appear in soonMaintenanceItems
+  // Dev-only: Diagnostic log for km-mode items
   if (process.env.NODE_ENV !== 'production') {
-    const overdueItems = soonMaintenanceInputs.filter(item => item.isOverdue);
-    const overdueInList = soonMaintenanceItems.filter(item => item.isOverdue);
+    const kmItems = itemsWithStatus.filter(({ item, lastEvent, statusResult }) => 
+      item.measurement_mode === 'km' && lastEvent && statusResult
+    );
     
-    if (overdueItems.length > 0) {
-      console.log('[Home] Overdue items analysis:', {
-        totalOverdue: overdueItems.length,
-        overdueInList: overdueInList.length,
-        overdueItems: overdueItems.map(item => ({
-          title: item.title,
-          status: item.status,
-          isOverdue: item.isOverdue,
-          remainingKm: item.remainingKm,
-          remainingDays: item.remainingDays,
-          mode: item.mode,
-        })),
-        overdueInListTitles: overdueInList.map(item => item.title),
-        missingOverdue: overdueItems
-          .filter(item => !overdueInList.find(listItem => listItem.id === item.id))
-          .map(item => item.title),
+    if (kmItems.length > 0) {
+      kmItems.forEach(({ item, statusResult }) => {
+        const status = statusResult!;
+        const isIncluded = soonMaintenanceItems.some(listItem => listItem.id === item.id);
+        const dailyKmRateUsed = status.dailyKmRateUsed ?? forecastDailyKmRate;
+        // dailyKmRateUsed is set to 30 when fallback is used in calcServiceStatus
+        const isFallback = dailyKmRateUsed === 30 && isFallbackRate;
+        
+        console.log(
+          `[Home KM] ${item.title} | ` +
+          `remainingKm=${status.remainingKm?.toFixed(0) ?? 'null'} | ` +
+          `remainingDays=${status.remainingDays?.toFixed(1) ?? 'null'} | ` +
+          `notify=${item.notify_before_days} | ` +
+          `rate=${dailyKmRateUsed.toFixed(1)}${isFallback ? '(fallback)' : ''} | ` +
+          `included=${isIncluded}`
+        );
       });
     }
   }
@@ -394,7 +396,11 @@ export default async function Home() {
         </div>
 
         {/* Soon Maintenance Block - Conditional */}
-        <HomeSoonMaintenanceBlock items={soonMaintenanceItems} />
+        <HomeSoonMaintenanceBlock 
+          items={soonMaintenanceItems} 
+          dailyKmRate={forecastDailyKmRate}
+          isFallbackRate={isFallbackRate}
+        />
 
         {/* Upcoming Replacements Section - Adaptive Dashboard */}
         <HomeAdaptiveContent
