@@ -3,6 +3,7 @@ import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/s
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
+import { headers } from 'next/headers';
 
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
