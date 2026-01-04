@@ -8,7 +8,7 @@
 import { unstable_cache } from 'next/cache';
 import { revalidateTag } from 'next/cache';
 import { createAdminClient } from '../supabase/adminClient';
-import { getLatestOdometerEntry } from './odometerActions';
+import { getMaxMileageEntry } from './odometerActions';
 import { TAGS } from '../cache/tags';
 import type {
   ServiceItem,
@@ -320,18 +320,18 @@ export async function addServiceEvent(
   
   const supabase = createAdminClient();
   
-  // Fetch latest odometer entry to validate mileage
-  const latestOdometer = await getLatestOdometerEntry();
+  // Fetch max mileage entry to validate mileage (matches what's shown on home page)
+  const maxMileageEntry = await getMaxMileageEntry();
   
-  if (latestOdometer === null) {
+  if (maxMileageEntry === null) {
     throw new Error('Сначала добавьте пробег (одометр)');
   }
   
   // Validate that service event mileage does not exceed current max odometer mileage
-  if (input.mileageKm > latestOdometer.mileage_km) {
+  if (input.mileageKm > maxMileageEntry.mileage_km) {
     throw new Error(
       `Пробег замены не может быть больше текущего пробега. ` +
-      `Текущий пробег: ${latestOdometer.mileage_km} км, указано: ${input.mileageKm} км`
+      `Текущий пробег: ${maxMileageEntry.mileage_km} км, указано: ${input.mileageKm} км`
     );
   }
   

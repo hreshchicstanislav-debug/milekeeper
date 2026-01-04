@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
-import { getLatestOdometerEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
+import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
 
@@ -23,7 +23,7 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
   
   // Load parallel data
   const [latestOdometer, odometerEntries] = await Promise.all([
-    getLatestOdometerEntry(),
+    getMaxMileageEntry(),
     listOdometerEntries(50),
   ]);
   

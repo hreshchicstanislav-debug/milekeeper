@@ -1,5 +1,5 @@
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
-import { getLatestOdometerEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
+import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus, compareServiceUrgency } from '@/lib/service/calcServiceStatus';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import ItemsPageClient from './ItemsPageClient';
@@ -15,7 +15,7 @@ export default async function ItemsPage() {
     profiler.wrap('service:items:list', () => listServiceItems())
   );
   const latestOdometerP = time('items:load-odometer', () => 
-    profiler.wrap('odometer:getLatest', () => getLatestOdometerEntry())
+    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry())
   );
   const odometerEntriesP = time('items:load-odometer-entries', () => 
     profiler.wrap('odometer:list(50)', () => listOdometerEntries(50))
