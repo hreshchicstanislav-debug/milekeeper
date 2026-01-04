@@ -7,6 +7,7 @@ import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemI
 import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
+import HomeNeedsFirstReplacementBlock from './components/HomeNeedsFirstReplacementBlock';
 import HomeContentClient from './components/HomeContentClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
@@ -304,6 +305,17 @@ export default async function Home() {
 
   const soonMaintenanceItems = pickSoonMaintenanceItems(soonMaintenanceInputs, DEFAULT_THRESHOLDS);
 
+  // Collect items without lastEvent (need first replacement)
+  const itemsNeedingFirstReplacement = serviceItems
+    .filter(item => {
+      const lastEvent = lastEventsMap[item.id] ?? null;
+      return item.is_active && lastEvent === null;
+    })
+    .slice(0, 5); // Limit to 5 items for display
+  const itemsNeedingFirstReplacementCount = serviceItems.filter(
+    item => item.is_active && (lastEventsMap[item.id] ?? null) === null
+  ).length;
+
   // Dev-only: Diagnostic log for km-mode items
   if (process.env.NODE_ENV !== 'production') {
     const kmItems = itemsWithStatus.filter(({ item, lastEvent, statusResult }) => 
@@ -394,6 +406,12 @@ export default async function Home() {
         <div className="add-mileage-section">
           <AddMileageForm />
         </div>
+
+        {/* Needs First Replacement Block - Conditional */}
+        <HomeNeedsFirstReplacementBlock 
+          items={itemsNeedingFirstReplacement}
+          totalCount={itemsNeedingFirstReplacementCount}
+        />
 
         {/* Soon Maintenance Block - Conditional */}
         <HomeSoonMaintenanceBlock 
