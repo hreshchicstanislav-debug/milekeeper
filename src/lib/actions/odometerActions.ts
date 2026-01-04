@@ -194,9 +194,12 @@ export async function addOdometerEntry(
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
   
-  // Also revalidate the home page path to ensure immediate UI update
+  // Also revalidate paths to ensure immediate UI update
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
+  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
   
   return data;
 }
@@ -231,6 +234,12 @@ export async function deleteLatestOdometerEntry(): Promise<string> {
   revalidateTag(TAGS.odometerEntries, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
   
   return latest.id;
 }
@@ -307,6 +316,12 @@ export async function updateLatestOdometerEntry(
   revalidateTag(TAGS.odometerEntries, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
   
   return data;
 }

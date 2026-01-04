@@ -6,7 +6,7 @@
  */
 
 import { unstable_cache } from 'next/cache';
-import { revalidateTag } from 'next/cache';
+import { revalidateTag, revalidatePath } from 'next/cache';
 import { createAdminClient } from '../supabase/adminClient';
 import { getMaxMileageEntry } from './odometerActions';
 import { TAGS } from '../cache/tags';
@@ -120,6 +120,12 @@ export async function createServiceItem(
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -253,6 +259,12 @@ export async function updateServiceItem(
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
   
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
+  
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
     console.log('[updateServiceItem] Revalidated tags: serviceItems, serviceEvents, home, items');
@@ -295,6 +307,12 @@ export async function deleteServiceItem(id: string): Promise<{ success: boolean 
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -359,6 +377,13 @@ export async function addServiceEvent(
   revalidateTag(TAGS.serviceEvents, 'max');
   revalidateTag(TAGS.home, 'max');
   revalidateTag(TAGS.items, 'max');
+  
+  // Also revalidate paths to ensure immediate UI update
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout');
+  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
   
   return data;
 }
