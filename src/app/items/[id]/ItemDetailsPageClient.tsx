@@ -42,6 +42,21 @@ export default function ItemDetailsPageClient({
     }
   }, [activeTab, item.id]);
 
+  // Refresh data when page becomes visible (user returns to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Page became visible, refresh to get latest data
+        router.refresh();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [router]);
+
   // Update URL when tab changes (only if different from current URL)
   useEffect(() => {
     const currentTab = searchParams.get('tab') || 'history';

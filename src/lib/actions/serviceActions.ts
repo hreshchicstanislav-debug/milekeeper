@@ -126,8 +126,7 @@ export async function createServiceItem(
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout');
-  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -266,8 +265,7 @@ export async function updateServiceItem(
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout');
-  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -317,8 +315,7 @@ export async function deleteServiceItem(id: string): Promise<{ success: boolean 
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout');
-  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
   
   // Dev-only: log cache invalidation
   if (process.env.NODE_ENV !== 'production') {
@@ -392,8 +389,7 @@ export async function addServiceEvent(
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout');
-  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
   
   return data;
 }

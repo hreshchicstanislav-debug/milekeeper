@@ -198,8 +198,7 @@ export async function addOdometerEntry(
   revalidatePath('/', 'page');
   revalidatePath('/', 'layout');
   revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout');
-  revalidatePath('/items/[id]', 'page'); // Dynamic route for item details
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
   
   return data;
 }
