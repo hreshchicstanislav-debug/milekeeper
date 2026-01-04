@@ -263,24 +263,6 @@ export default async function Home() {
     return a.item.title.localeCompare(b.item.title);
   });
 
-  // Filter items eligible for Home upcoming dashboard:
-  // - Must have lastEvent (baseline replacement)
-  // - Must be OVERDUE or SOON (using statusResult.status as single source of truth)
-  const urgentItemsForHome = itemsWithStatus
-    .filter(({ item, lastEvent, statusResult }) => {
-      // Exclude items without lastEvent
-      if (!lastEvent) return false;
-      
-      // Include only OVERDUE or SOON items (using statusResult.status)
-      if (!statusResult) return false;
-      return statusResult.status === 'OVERDUE' || statusResult.status === 'SOON';
-    })
-    .map(({ item, lastEvent, statusResult }) => ({
-      item,
-      lastEvent,
-      statusResult: statusResult!,
-    }));
-
   // Compute soon maintenance items using helper module
   const soonMaintenanceInputs: SoonMaintenanceItemInput[] = itemsWithStatus
     .filter(({ lastEvent, statusResult }) => {
@@ -304,6 +286,46 @@ export default async function Home() {
     });
 
   const soonMaintenanceItems = pickSoonMaintenanceItems(soonMaintenanceInputs, DEFAULT_THRESHOLDS);
+
+  // Align status with Soon visibility: if item is in Soon block but has OK status, treat it as SOON for UI
+  // This ensures UI consistency - items in Soon block should have SOON status (except OVERDUE)
+  // This is UI-level alignment, calcServiceStatus remains a pure calculation function
+  const soonItemIds = new Set(soonMaintenanceItems.map(item => item.id));
+  itemsWithStatus.forEach(itemWithStatus => {
+    if (soonItemIds.has(itemWithStatus.item.id) && itemWithStatus.statusResult) {
+      const status = itemWithStatus.statusResult.status;
+      // Only update OK to SOON, never change OVERDUE
+      if (status === 'OK') {
+        // Update statusResult for UI consistency (this is UI-level, not changing calcServiceStatus logic)
+        itemWithStatus.statusResult = {
+          ...itemWithStatus.statusResult,
+          status: 'SOON',
+          why: itemWithStatus.statusResult.why || 'Скоро обслуживание',
+        };
+        // Also update urgency for consistency
+        itemWithStatus.urgency = 'SOON';
+      }
+    }
+  });
+
+  // Filter items eligible for Home upcoming dashboard:
+  // - Must have lastEvent (baseline replacement)
+  // - Must be OVERDUE or SOON (using statusResult.status as single source of truth)
+  // Note: statusResult.status may be updated above for UI consistency
+  const urgentItemsForHome = itemsWithStatus
+    .filter(({ item, lastEvent, statusResult }) => {
+      // Exclude items without lastEvent
+      if (!lastEvent) return false;
+      
+      // Include only OVERDUE or SOON items (using statusResult.status)
+      if (!statusResult) return false;
+      return statusResult.status === 'OVERDUE' || statusResult.status === 'SOON';
+    })
+    .map(({ item, lastEvent, statusResult }) => ({
+      item,
+      lastEvent,
+      statusResult: statusResult!,
+    }));
 
   // Collect items without lastEvent (need first replacement)
   const itemsNeedingFirstReplacement = serviceItems
