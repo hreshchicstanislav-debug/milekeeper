@@ -1,0 +1,22 @@
+#!/bin/bash
+
+echo "🚀 Deploy started..."
+
+# Проверка, есть ли изменения
+if [[ -z $(git status --porcelain) ]]; then
+  echo "✅ No changes to deploy"
+  exit 0
+fi
+
+# Добавляем все изменения
+git add .
+
+# Коммит с автосообщением
+MSG="deploy: $(date '+%Y-%m-%d %H:%M')"
+git commit -m "$MSG"
+
+# Пуш в main
+git push origin main
+
+echo "✅ Pushed to GitHub"
+echo "🌍 Vercel will deploy automatically"
