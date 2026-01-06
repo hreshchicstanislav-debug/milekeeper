@@ -372,11 +372,32 @@ body {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem); /* 12px vertical, 16px horizontal - iOS-like density */
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  padding-left: calc(var(--sp-4, 1rem) + 4px); /* Add space for color accent */
   min-height: var(--control-height-sm, 44px);
   position: relative;
   cursor: default; /* Non-interactive informational row */
   overflow: visible; /* Ensure right meta is not clipped on small screens */
+}
+
+
+.soon-maintenance-row.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.soon-maintenance-row.clickable:active {
+  background-color: var(--row-pressed-bg, rgba(0, 0, 0, 0.06));
+}
+
+.soon-maintenance-row.clickable:focus-visible {
+  background-color: var(--row-pressed-bg, rgba(0, 0, 0, 0.06));
+  outline: 2px solid var(--control-primary-bg, #007aff);
+  outline-offset: -2px;
+}
+
+.soon-maintenance-row.clickable:hover {
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 .soon-maintenance-row:not(.last)::after {
@@ -388,6 +409,21 @@ body {
   height: 1px;
   background: var(--divider, rgba(0, 0, 0, 0.08));
   z-index: 1;
+}
+
+/* Status-first UI (v1) - Content structure */
+.soon-maintenance-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.soon-maintenance-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  margin-bottom: var(--sp-2, 0.5rem);
 }
 
 /* Home Soon Maintenance — prevent right meta from clipping on small screens */
@@ -437,6 +473,14 @@ body {
   color: rgba(255, 59, 48, 0.85); /* iOS destructive red, subtle */
   white-space: nowrap;
 }
+
+.soon-maintenance-status-text {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+}
+
 
 /* Home: Needs First Replacement Block */
 .needs-first-replacement-section {
@@ -1642,6 +1686,7 @@ p {
   border: none;
   border-radius: 0;
   padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  padding-left: calc(var(--sp-4, 1rem) + 4px); /* Add space for color accent */
   min-height: var(--control-height-sm, 44px);
   position: relative;
   transition: background-color 0.15s ease;
@@ -1698,15 +1743,203 @@ p {
   background-color: rgba(0, 0, 0, 0.02);
 }
 
+/* Shared Status UI Classes (v1) - Used by Items List and Home Soon Maintenance */
+
+/* Status row container */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1, 0.25rem);
+}
+
+/* StatusRow component styles */
+.status-row-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.status-row-title {
+  font-size: var(--text-subheading, 1.25rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-text {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Color accent on left side (via ::before on parent row) */
+.status-accent::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 0 2px 2px 0;
+  z-index: 1;
+}
+
+.status-green::before {
+  background-color: #34c759; /* iOS green */
+}
+
+.status-yellow::before {
+  background-color: #ffcc00; /* iOS yellow */
+}
+
+.status-orange::before {
+  background-color: #ff9500; /* iOS orange */
+}
+
+.status-red::before {
+  background-color: #ff3b30; /* iOS red */
+}
+
 .service-item-title {
   font-size: var(--text-subheading, 1.25rem);
   font-weight: var(--fw-semibold, 600);
   line-height: var(--lh-normal, 1.35);
   color: #1a1a1a;
-  margin-bottom: var(--sp-2, 0.5rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.service-item-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.service-item-status-text {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Info indicator (ⓘ) */
+.status-info-indicator {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: var(--text-caption, 0.875rem);
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.2em;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.status-info-indicator:hover {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.status-info-indicator:active {
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.status-info-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.status-info-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: var(--sp-1, 0.25rem);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Adjust tooltip position on mobile to prevent overflow */
+@media (max-width: 430px) {
+  .status-info-tooltip {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+  
+  .status-info-tooltip::after {
+    left: auto;
+    right: 1rem;
+    transform: none;
+  }
+}
+
+.status-info-tooltip-content {
+  background: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  border-radius: var(--radius-sm, 8px);
+  font-size: var(--text-small, 0.8125rem);
+  line-height: var(--lh-relaxed, 1.5);
+  max-width: 280px;
+  white-space: normal;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: auto;
+}
+
+.status-info-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.85);
+}
+
+/* Progress bar */
+.status-progress-bar {
+  width: 100%;
+  height: 5px;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 2.5px;
+  overflow: hidden;
+  margin-top: var(--sp-1, 0.25rem);
+}
+
+.status-progress-fill {
+  height: 100%;
+  border-radius: 2.5px;
+  transition: width 0.2s ease;
+}
+
+.status-progress-green {
+  background-color: #34c759;
+}
+
+.status-progress-yellow {
+  background-color: #ffcc00;
+}
+
+.status-progress-orange {
+  background-color: #ff9500;
+}
+
+.status-progress-red {
+  background-color: #ff3b30;
 }
 
 .service-item-intervals {

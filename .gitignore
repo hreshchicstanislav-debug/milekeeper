@@ -30,3 +30,8 @@ pnpm-debug.log*
 .cursor
 .cursor
 .env.vercel.*
+.vercel
+.env*.local
+
+# TypeScript build info
+tsconfig.tsbuildinfo

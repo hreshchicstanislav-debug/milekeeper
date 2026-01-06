@@ -4,12 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AddServiceItemForm from '../components/AddServiceItemForm';
 import ItemDetailsSheet from '../components/ItemDetailsSheet';
+import StatusRow from '../components/StatusRow';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
 import type { ServiceItem } from '@/lib/db/types';
+import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 
 interface ItemsPageClientProps {
-  itemsWithLastEvent: Array<{ item: ServiceItem; lastEvent: any }>;
+  itemsWithLastEvent: Array<{ item: ServiceItem; lastEvent: any; statusVM: ServiceItemStatusVM }>;
   latestOdometer: any;
   dailyKmRate?: number | null;
 }
@@ -30,6 +31,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
       console.log('[ItemsPageClient] Mounted');
     }
   }, []);
+
 
   // Dev-only: log refresh calls
   const handleRefresh = () => {
@@ -72,10 +74,10 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
         ) : (
           <div className="items-list-group">
             <div className="items-list">
-              {itemsWithLastEvent.map(({ item, lastEvent }, index) => (
+              {itemsWithLastEvent.map(({ item, statusVM }, index) => (
                 <div 
                   key={item.id} 
-                  className={`service-item-row clickable ${index === itemsWithLastEvent.length - 1 ? 'last' : ''}`}
+                  className={`service-item-row clickable status-accent status-${statusVM.statusColor} ${index === itemsWithLastEvent.length - 1 ? 'last' : ''}`}
                   onClick={() => {
                     // Navigate to item details page (mobile-first approach)
                     router.push(`/items/${item.id}`);
@@ -91,29 +93,14 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
                   }}
                 >
                   <div className="service-item-row-content">
-                    <div className="service-item-title">{item.title}</div>
-                    <div className="service-item-intervals">
-                      {item.measurement_mode === 'km' && item.interval_km && (
-                        <span className="service-interval">
-                          {RU.items.everyKm.replace('{value}', formatNumber(item.interval_km))}
-                        </span>
-                      )}
-                      {item.measurement_mode === 'calendar' && item.interval_days && (
-                        <span className="service-interval">
-                          {RU.items.everyDays.replace('{value}', formatNumber(item.interval_days))}
-                        </span>
-                      )}
-                    </div>
-                    {lastEvent && (
-                      <div className="service-item-last-replacement">
-                        {RU.items.lastReplacement
-                          .replace('{date}', formatDateTimeRu(lastEvent.occurred_at))
-                          .replace('{mileage}', formatNumber(lastEvent.mileage_km))}
-                      </div>
-                    )}
-                    {item.note && (
-                      <div className="service-item-note">{item.note}</div>
-                    )}
+                    <StatusRow
+                      title={item.title}
+                      statusText={statusVM.statusText}
+                      statusColor={statusVM.statusColor}
+                      remainingRatio={statusVM.remainingRatio}
+                      isPredictionReliable={statusVM.isPredictionReliable}
+                      className="service-item-status-content"
+                    />
                   </div>
                   <span className="row-chevron" aria-hidden="true">›</span>
                 </div>

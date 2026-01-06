@@ -1,11 +1,18 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { RU } from '@/lib/copy/ru';
 import type { SoonMaintenanceItem } from '@/lib/home/soonMaintenance';
+import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
+import StatusRow from './StatusRow';
 import { formatNumber } from '@/lib/copy/ru';
 
+interface SoonMaintenanceItemWithVM extends SoonMaintenanceItem {
+  statusVM: ServiceItemStatusVM | null;
+}
+
 interface HomeSoonMaintenanceBlockProps {
-  items: SoonMaintenanceItem[];
+  itemsWithVM: SoonMaintenanceItemWithVM[];
   dailyKmRate?: number;
   isFallbackRate?: boolean;
 }
@@ -14,19 +21,29 @@ interface HomeSoonMaintenanceBlockProps {
  * Home "Soon Maintenance" block component
  * Renders iOS-style grouped list of maintenance items that need attention soon
  * Returns null if items array is empty (no empty surface)
+ * 
+ * Target UI (v1): Shows only title + statusText + progress-bar + color accent
  */
 export default function HomeSoonMaintenanceBlock({ 
-  items, 
+  itemsWithVM, 
   dailyKmRate, 
   isFallbackRate = false 
 }: HomeSoonMaintenanceBlockProps) {
+  const router = useRouter();
+  
   // IMPORTANT: Return null if no items (no empty surface)
-  if (items.length === 0) {
+  if (itemsWithVM.length === 0) {
+    return null;
+  }
+
+  // Filter out items without statusVM (should not happen in practice)
+  const validItems = itemsWithVM.filter(item => item.statusVM !== null);
+  if (validItems.length === 0) {
     return null;
   }
 
   // Check if there are any km-mode items to show rate hint
-  const hasKmItems = items.some(item => !item.isCalendarMode);
+  const hasKmItems = validItems.some(item => !item.isCalendarMode);
   const showRateHint = hasKmItems && dailyKmRate !== undefined;
 
   return (
@@ -39,26 +56,39 @@ export default function HomeSoonMaintenanceBlock({
       )}
       <div className="soon-maintenance-group">
         <div className="soon-maintenance-list">
-          {items.map((item, index) => (
-            <div
-              key={item.id}
-              className={`soon-maintenance-row ${item.severity === 'OVERDUE' ? 'overdue' : ''} ${index === items.length - 1 ? 'last' : ''}`}
-            >
-              <div className="soon-maintenance-row-main">
-                <span className="soon-maintenance-row-title" title={item.title}>
-                  {item.title}
-                </span>
-                <div className="soon-maintenance-right">
-                  {item.eta && (
-                    <span className="soon-maintenance-eta">{item.eta}</span>
-                  )}
-                  {item.statusLabel && (
-                    <span className="soon-maintenance-status">{item.statusLabel}</span>
-                  )}
+          {validItems.map((item, index) => {
+            const statusVM = item.statusVM!; // Guaranteed by filter above
+
+            return (
+              <div
+                key={item.id}
+                className={`soon-maintenance-row clickable status-accent status-${statusVM.statusColor} ${index === validItems.length - 1 ? 'last' : ''}`}
+                onClick={() => {
+                  // Navigate to item details page
+                  router.push(`/items/${item.id}`);
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    router.push(`/items/${item.id}`);
+                  }
+                }}
+              >
+                <div className="soon-maintenance-row-content">
+                  <StatusRow
+                    title={item.title}
+                    statusText={statusVM.statusText}
+                    statusColor={statusVM.statusColor}
+                    remainingRatio={statusVM.remainingRatio}
+                    isPredictionReliable={statusVM.isPredictionReliable}
+                    className="soon-maintenance-status-content"
+                  />
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

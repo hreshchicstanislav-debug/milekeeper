@@ -2,6 +2,7 @@ import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/s
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus, compareServiceUrgency } from '@/lib/service/calcServiceStatus';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
+import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import ItemsPageClient from './ItemsPageClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
@@ -46,6 +47,7 @@ export default async function ItemsPage() {
   // Returns EstimateResult with dailyKmRate (always > 0) and isFallback flag
   const forecastResult = estimateDailyKmRate(odometerEntries);
   const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
+  const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
 
   const itemsWithStatus = items.map((item) => {
     const lastEvent = lastEventsMap[item.id] || null;
@@ -56,10 +58,24 @@ export default async function ItemsPage() {
       dailyKmRate: forecastDailyKmRate,
       now,
     });
+    
+    // Build view-model for Target UI (v1) - see docs/elements-status-ui-v1.md
+    // Note: confidence is not computed in Items List, so it's undefined
+    const statusVM = buildServiceItemStatusVM(item, statusResult, {
+      measurement_mode: item.measurement_mode,
+      interval_km: item.interval_km,
+      interval_days: item.interval_days,
+      notify_before_days: item.notify_before_days,
+      dailyKmRate: forecastDailyKmRate,
+      isFallbackRate: isFallbackRate,
+      confidence: undefined, // Not computed in Items List
+    });
+    
     return {
       item,
       lastEvent,
       statusResult,
+      statusVM, // View-model for new UI (not used in current UI)
     };
   });
 
@@ -67,16 +83,18 @@ export default async function ItemsPage() {
   // Внутри каждой группы: по степени просрочки/остатку (чем хуже, тем выше)
   itemsWithStatus.sort(compareServiceUrgency);
 
+
   // Log DB profiler summary (dev-only)
   if (process.env.NODE_ENV !== 'production') {
     const summary = profiler.summary();
     console.log(formatProfilerSummary(summary));
   }
 
-  // Преобразуем обратно в формат, ожидаемый клиентом (без statusResult)
-  const itemsWithLastEvent = itemsWithStatus.map(({ item, lastEvent }) => ({
+  // Преобразуем в формат, ожидаемый клиентом (с statusVM для нового UI)
+  const itemsWithLastEvent = itemsWithStatus.map(({ item, lastEvent, statusVM }) => ({
     item,
     lastEvent,
+    statusVM, // View-model for Target UI (v1)
   }));
 
   return <ItemsPageClient itemsWithLastEvent={itemsWithLastEvent} latestOdometer={latestOdometer} dailyKmRate={forecastDailyKmRate} />;

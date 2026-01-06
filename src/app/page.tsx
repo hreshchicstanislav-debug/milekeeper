@@ -4,6 +4,7 @@ import { computeDailyRate, computeConfidence } from '@/lib/prediction/dailyRate'
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemInput } from '@/lib/home/soonMaintenance';
+import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
@@ -287,6 +288,39 @@ export default async function Home() {
 
   const soonMaintenanceItems = pickSoonMaintenanceItems(soonMaintenanceInputs, DEFAULT_THRESHOLDS);
 
+  // Build statusVM for each soonMaintenanceItem (for Target UI v1)
+  // Map soonMaintenanceItems to their corresponding itemsWithStatus to get full context
+  const soonMaintenanceItemsWithVM = soonMaintenanceItems.map(soonItem => {
+    // Find corresponding item in itemsWithStatus
+    const itemWithStatus = itemsWithStatus.find(i => i.item.id === soonItem.id);
+    
+    if (!itemWithStatus || !itemWithStatus.statusResult) {
+      // Fallback: create a minimal statusVM (should not happen in practice)
+      return {
+        ...soonItem,
+        statusVM: null as ServiceItemStatusVM | null,
+      };
+    }
+    
+    const { item, statusResult } = itemWithStatus;
+    
+    // Build view-model for Target UI (v1) - see docs/elements-status-ui-v1.md
+    const statusVM = buildServiceItemStatusVM(item, statusResult, {
+      measurement_mode: item.measurement_mode,
+      interval_km: item.interval_km,
+      interval_days: item.interval_days,
+      notify_before_days: item.notify_before_days,
+      dailyKmRate: forecastDailyKmRate,
+      isFallbackRate: isFallbackRate,
+      confidence: confidence, // Available from computeConfidence on Home
+    });
+    
+    return {
+      ...soonItem,
+      statusVM,
+    };
+  });
+
   // Align status with Soon visibility: if item is in Soon block but has OK status, treat it as SOON for UI
   // This ensures UI consistency - items in Soon block should have SOON status (except OVERDUE)
   // This is UI-level alignment, calcServiceStatus remains a pure calculation function
@@ -421,7 +455,7 @@ export default async function Home() {
 
         {/* Soon Maintenance Block - Conditional */}
         <HomeSoonMaintenanceBlock 
-          items={soonMaintenanceItems} 
+          itemsWithVM={soonMaintenanceItemsWithVM} 
           dailyKmRate={forecastDailyKmRate}
           isFallbackRate={isFallbackRate}
         />
