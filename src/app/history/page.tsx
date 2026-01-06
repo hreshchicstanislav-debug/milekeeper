@@ -7,7 +7,7 @@ import EditLatestMileageButton from './components/EditLatestMileageButton';
 
 export default async function HistoryPage() {
   const entries = await listOdometerEntries(50);
-  const latestEntry = await getLatestOdometerEntry();
+  const latestEntry = await getLatestOdometerEntry('History');
 
   return (
     <>

@@ -10,6 +10,7 @@ import { revalidateTag, revalidatePath } from 'next/cache';
 import { createAdminClient } from '../supabase/adminClient';
 import { TAGS } from '../cache/tags';
 import type { OdometerEntry, OdometerEntryInput } from '../db/types';
+import { logMileageQuery } from '../dev/mileageDiagnostics';
 
 /**
  * List odometer entries, ordered by occurred_at descending
@@ -84,13 +85,28 @@ const _getLatestOdometerEntryCached = unstable_cache(
   }
 );
 
-export async function getLatestOdometerEntry(): Promise<OdometerEntry | null> {
+export async function getLatestOdometerEntry(screenName?: string): Promise<OdometerEntry | null> {
   // In dev mode, bypass cache to ensure fresh data
-  if (process.env.NODE_ENV !== 'production') {
-    return await _getLatestOdometerEntry();
+  const result = process.env.NODE_ENV !== 'production'
+    ? await _getLatestOdometerEntry()
+    : await _getLatestOdometerEntryCached();
+  
+  // Diagnostic logging (only in dev/preview or when NEXT_PUBLIC_DIAGNOSTICS=1)
+  if (screenName) {
+    logMileageQuery({
+      screenName,
+      queryName: 'getLatestOdometerEntry',
+      sortKey: 'occurred_at DESC, mileage_km DESC',
+      returnedRecord: result ? {
+        id: result.id,
+        mileage_km: result.mileage_km,
+        occurred_at: result.occurred_at,
+        timestamp: result.occurred_at,
+      } : null,
+    });
   }
   
-  return await _getLatestOdometerEntryCached();
+  return result;
 }
 
 /**
@@ -126,11 +142,28 @@ const _getMaxMileageEntryCached = unstable_cache(
   }
 );
 
-export async function getMaxMileageEntry(): Promise<OdometerEntry | null> {
+export async function getMaxMileageEntry(screenName?: string): Promise<OdometerEntry | null> {
   // Always bypass cache to ensure fresh data
   // This is critical for accurate current mileage display across all pages
   // The performance impact is minimal as this is a simple query with LIMIT 1
-  return await _getMaxMileageEntry();
+  const result = await _getMaxMileageEntry();
+  
+  // Diagnostic logging (only in dev/preview or when NEXT_PUBLIC_DIAGNOSTICS=1)
+  if (screenName) {
+    logMileageQuery({
+      screenName,
+      queryName: 'getMaxMileageEntry',
+      sortKey: 'mileage_km DESC',
+      returnedRecord: result ? {
+        id: result.id,
+        mileage_km: result.mileage_km,
+        occurred_at: result.occurred_at,
+        timestamp: result.occurred_at,
+      } : null,
+    });
+  }
+  
+  return result;
 }
 
 /**
@@ -143,7 +176,7 @@ export async function addOdometerEntry(
   input: OdometerEntryInput
 ): Promise<OdometerEntry> {
   const supabase = createAdminClient();
-
+  
   // Fetch the maximum mileage from database to validate monotonicity
   // This matches what the database trigger uses (MAX(mileage_km))
   // Note: getLatestOdometerEntry() returns entry by date, not by max mileage
@@ -210,7 +243,7 @@ export async function deleteLatestOdometerEntry(): Promise<string> {
   const supabase = createAdminClient();
   
   // Fetch the latest entry
-  const latest = await getLatestOdometerEntry();
+  const latest = await getLatestOdometerEntry('DeleteLatestOdometerEntry');
   
   if (latest === null) {
     throw new Error('Нет записей для удаления');
@@ -254,7 +287,7 @@ export async function updateLatestOdometerEntry(
   const supabase = createAdminClient();
   
   // Fetch the latest entry
-  const latest = await getLatestOdometerEntry();
+  const latest = await getLatestOdometerEntry('UpdateLatestOdometerEntry');
   
   if (latest === null) {
     throw new Error('Нет записей для редактирования');

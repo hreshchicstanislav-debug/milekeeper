@@ -7,7 +7,6 @@ import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemI
 import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
-import HomeNeedsFirstReplacementBlock from './components/HomeNeedsFirstReplacementBlock';
 import HomeContentClient from './components/HomeContentClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
@@ -18,6 +17,7 @@ import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 type UrgencyStatus = 'OVERDUE' | 'SOON' | 'OK';
 
@@ -41,7 +41,7 @@ export default async function Home() {
   // Phase 1: Load independent data in parallel (all start simultaneously)
   // Create promises first (they start executing immediately)
   const maxMileageEntryP = time('home:load-odometer-max', () => 
-    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry())
+    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry('Home'))
   );
   const odometerEntriesP = time('home:load-odometer-entries', () => 
     profiler.wrap('odometer:list(50)', () => listOdometerEntries(50))
@@ -327,16 +327,6 @@ export default async function Home() {
       statusResult: statusResult!,
     }));
 
-  // Collect items without lastEvent (need first replacement)
-  const itemsNeedingFirstReplacement = serviceItems
-    .filter(item => {
-      const lastEvent = lastEventsMap[item.id] ?? null;
-      return item.is_active && lastEvent === null;
-    })
-    .slice(0, 5); // Limit to 5 items for display
-  const itemsNeedingFirstReplacementCount = serviceItems.filter(
-    item => item.is_active && (lastEventsMap[item.id] ?? null) === null
-  ).length;
 
   // Dev-only: Diagnostic log for km-mode items
   if (process.env.NODE_ENV !== 'production') {
@@ -428,12 +418,6 @@ export default async function Home() {
         <div className="add-mileage-section">
           <AddMileageForm />
         </div>
-
-        {/* Needs First Replacement Block - Conditional */}
-        <HomeNeedsFirstReplacementBlock 
-          items={itemsNeedingFirstReplacement}
-          totalCount={itemsNeedingFirstReplacementCount}
-        />
 
         {/* Soon Maintenance Block - Conditional */}
         <HomeSoonMaintenanceBlock 

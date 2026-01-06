@@ -28,7 +28,7 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
   
   // Load parallel data
   const [latestOdometer, odometerEntries] = await Promise.all([
-    getMaxMileageEntry(),
+    getMaxMileageEntry(`ItemDetails:${item.title}`),
     listOdometerEntries(50),
   ]);
   

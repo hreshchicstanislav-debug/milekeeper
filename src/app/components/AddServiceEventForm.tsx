@@ -295,7 +295,10 @@ export default function AddServiceEventForm({
           onSuccess();
         }
         // Refresh router to update all pages (Home, /items list, etc.)
-        // This is safe even if onSuccess also refreshes - Next.js deduplicates concurrent refreshes
+        // Add cache-busting to ensure fresh data on Vercel
+        const url = new URL(window.location.href);
+        url.searchParams.set('_t', Date.now().toString());
+        router.replace(url.pathname + url.search, { scroll: false });
         router.refresh();
       }
       

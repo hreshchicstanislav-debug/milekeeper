@@ -342,7 +342,7 @@ export async function addServiceEvent(
   const supabase = createAdminClient();
   
   // Fetch max mileage entry to validate mileage (matches what's shown on home page)
-  const maxMileageEntry = await getMaxMileageEntry();
+  const maxMileageEntry = await getMaxMileageEntry('AddServiceEvent');
   
   if (maxMileageEntry === null) {
     throw new Error('Сначала добавьте пробег (одометр)');

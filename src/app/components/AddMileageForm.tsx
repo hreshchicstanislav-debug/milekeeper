@@ -53,8 +53,14 @@ export default function AddMileageForm() {
       setShowNote(false);
       setIsOpen(false);
       
-      // Use startTransition for smoother UI update
+      // Force refresh with cache-busting to ensure data updates on Vercel
+      // Use startTransition for smoother UI update, but also add cache-busting
       startTransition(() => {
+        // Add cache-busting parameter to force fresh data fetch
+        const url = new URL(window.location.href);
+        url.searchParams.set('_t', Date.now().toString());
+        // Use replace to avoid adding to history, but ensure fresh data
+        router.replace(url.pathname + url.search);
         router.refresh();
       });
     } catch (err) {

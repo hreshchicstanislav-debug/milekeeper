@@ -19,7 +19,7 @@ export default async function ItemsPage() {
     profiler.wrap('service:items:list', () => listServiceItems())
   );
   const latestOdometerP = time('items:load-odometer', () => 
-    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry())
+    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry('ItemsList'))
   );
   const odometerEntriesP = time('items:load-odometer-entries', () => 
     profiler.wrap('odometer:list(50)', () => listOdometerEntries(50))

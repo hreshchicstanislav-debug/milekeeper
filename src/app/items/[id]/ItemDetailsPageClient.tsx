@@ -9,6 +9,7 @@ import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from '@/app/components/MarkReplacementButton';
 import AddServiceItemForm from '@/app/components/AddServiceItemForm';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
+import { logMileageComparison } from '@/lib/dev/mileageDiagnostics';
 
 interface ItemDetailsPageClientProps {
   item: ServiceItem;
@@ -163,6 +164,26 @@ export default function ItemDetailsPageClient({
 
   // Calculate status using helper
   const currentMileage = latestOdometer?.mileage_km ?? null;
+  
+  // Diagnostic logging: log what we received from server component
+  useEffect(() => {
+    if (latestOdometer) {
+      // Log the record we received (for comparison with Home page logs)
+      logMileageComparison(
+        `ItemDetails:${item.title}`,
+        { query: 'getMaxMileageEntry (server component)', mileage: latestOdometer.mileage_km },
+        { query: 'latestOdometer prop (client component)', mileage: latestOdometer.mileage_km }
+      );
+    } else {
+      // Log if we received null
+      logMileageComparison(
+        `ItemDetails:${item.title}`,
+        { query: 'getMaxMileageEntry (server component)', mileage: null },
+        { query: 'latestOdometer prop (client component)', mileage: null }
+      );
+    }
+  }, [latestOdometer, item.title]);
+  
   const statusResult = calcServiceStatus({
     serviceItem: item,
     latestOdometerMileageKm: currentMileage,
