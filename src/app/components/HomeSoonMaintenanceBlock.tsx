@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { RU } from '@/lib/copy/ru';
 import type { SoonMaintenanceItem } from '@/lib/home/soonMaintenance';
 import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
-import StatusRow from './StatusRow';
+import StatusRowCompact from './StatusRowCompact';
 import { formatNumber } from '@/lib/copy/ru';
 
 interface SoonMaintenanceItemWithVM extends SoonMaintenanceItem {
@@ -46,8 +46,37 @@ export default function HomeSoonMaintenanceBlock({
   const hasKmItems = validItems.some(item => !item.isCalendarMode);
   const showRateHint = hasKmItems && dailyKmRate !== undefined;
 
+  /**
+   * Map statusVM to semantic category for Home-only lightweight indicator
+   * Rules:
+   * - If statusText is 'Просрочено' OR daysToReplace < 0 => category='critical'
+   * - Else if statusText is 'Скоро' AND isPredictionReliable=false => category='warning_unknown'
+   * - Else if statusText includes 'дн' or '~' and daysToReplace is not null:
+   *   - if daysToReplace <= 10 => category='warning'
+   *   - else category='ok'
+   */
+  const getCategory = (statusVM: ServiceItemStatusVM): 'critical' | 'warning' | 'warning_unknown' | 'ok' => {
+    if (statusVM.statusText === 'Просрочено' || (statusVM.daysToReplace !== null && statusVM.daysToReplace < 0)) {
+      return 'critical';
+    }
+    
+    if (statusVM.statusText === 'Скоро' && !statusVM.isPredictionReliable) {
+      return 'warning_unknown';
+    }
+    
+    if ((statusVM.statusText.includes('дн') || statusVM.statusText.includes('~')) && statusVM.daysToReplace !== null) {
+      if (statusVM.daysToReplace <= 10) {
+        return 'warning';
+      }
+      return 'ok';
+    }
+    
+    // Default fallback
+    return 'ok';
+  };
+
   return (
-    <section className="soon-maintenance-section">
+    <section className="soon-maintenance-section home-soon-maintenance">
       <h2 className="soon-maintenance-title">{RU.home.soonMaintenance.title}</h2>
       {showRateHint && (
         <div className="soon-maintenance-rate-hint">
@@ -58,11 +87,12 @@ export default function HomeSoonMaintenanceBlock({
         <div className="soon-maintenance-list">
           {validItems.map((item, index) => {
             const statusVM = item.statusVM!; // Guaranteed by filter above
+            const category = getCategory(statusVM);
 
             return (
               <div
                 key={item.id}
-                className={`soon-maintenance-row clickable status-accent status-${statusVM.statusColor} ${index === validItems.length - 1 ? 'last' : ''}`}
+                className={`soon-maintenance-row clickable ${index === validItems.length - 1 ? 'last' : ''}`}
                 onClick={() => {
                   // Navigate to item details page
                   router.push(`/items/${item.id}`);
@@ -77,11 +107,10 @@ export default function HomeSoonMaintenanceBlock({
                 }}
               >
                 <div className="soon-maintenance-row-content">
-                  <StatusRow
+                  <StatusRowCompact
                     title={item.title}
                     statusText={statusVM.statusText}
-                    statusColor={statusVM.statusColor}
-                    remainingRatio={statusVM.remainingRatio}
+                    category={category}
                     isPredictionReliable={statusVM.isPredictionReliable}
                     className="soon-maintenance-status-content"
                   />

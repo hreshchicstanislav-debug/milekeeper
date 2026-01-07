@@ -477,8 +477,98 @@ body {
 .soon-maintenance-status-text {
   font-size: var(--text-caption, 0.875rem);
   font-weight: var(--fw-regular, 400);
+}
+
+/* Home Soon Maintenance - Compact Row Styles (UI-2) */
+.home-soon-maintenance .soon-maintenance-row {
+  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem);
+  padding-left: calc(var(--sp-4, 1rem) + 8px); /* Space for compact indicator */
+  min-height: 44px; /* Tap-friendly but compact */
+  display: flex;
+  align-items: center;
+}
+
+.home-soon-maintenance .soon-maintenance-row-content {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Compact row layout: indicator + title + statusText */
+.status-row-compact {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  width: 100%;
+  min-width: 0;
+}
+
+/* Tiny category indicator (single signal, not a stripe and not a progress bar) */
+.status-row-compact-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-row-compact-indicator-critical {
+  background-color: #ff3b30; /* iOS red */
+}
+
+.status-row-compact-indicator-warning {
+  background-color: #ff9500; /* iOS orange */
+}
+
+.status-row-compact-indicator-warning_unknown {
+  background-color: #ffcc00; /* iOS yellow */
+}
+
+.status-row-compact-indicator-ok {
+  background-color: #34c759; /* iOS green */
+}
+
+/* Title: single line with ellipsis */
+.status-row-compact-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Right: statusText aligned right */
+.status-row-compact-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1, 0.25rem);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.status-row-compact-status-text {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
   line-height: var(--lh-normal, 1.35);
   color: rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+}
+
+/* Remove progress bar and stripe for Home compact rows */
+.home-soon-maintenance .status-progress-bar {
+  display: none;
+}
+
+
+/* Ensure no clipping - remove fixed heights that cut off rows */
+.home-soon-maintenance .soon-maintenance-list {
+  overflow: visible;
+}
+
+.home-soon-maintenance .soon-maintenance-group {
+  overflow: visible;
 }
 
 
@@ -1686,7 +1776,6 @@ p {
   border: none;
   border-radius: 0;
   padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
-  padding-left: calc(var(--sp-4, 1rem) + 4px); /* Add space for color accent */
   min-height: var(--control-height-sm, 44px);
   position: relative;
   transition: background-color 0.15s ease;
@@ -1695,6 +1784,12 @@ p {
   justify-content: space-between;
   gap: var(--sp-3, 0.75rem);
 }
+
+/* Items List - Remove left accent stripe (UI-3) */
+.items-list .service-item-row {
+  padding-left: var(--sp-4, 1rem); /* No extra space for accent */
+}
+
 
 .service-item-row:not(.last)::after {
   content: '';
@@ -1777,33 +1872,6 @@ p {
   color: rgba(0, 0, 0, 0.65);
 }
 
-/* Color accent on left side (via ::before on parent row) */
-.status-accent::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  border-radius: 0 2px 2px 0;
-  z-index: 1;
-}
-
-.status-green::before {
-  background-color: #34c759; /* iOS green */
-}
-
-.status-yellow::before {
-  background-color: #ffcc00; /* iOS yellow */
-}
-
-.status-orange::before {
-  background-color: #ff9500; /* iOS orange */
-}
-
-.status-red::before {
-  background-color: #ff3b30; /* iOS red */
-}
 
 .service-item-title {
   font-size: var(--text-subheading, 1.25rem);
@@ -1940,6 +2008,76 @@ p {
 
 .status-progress-red {
   background-color: #ff3b30;
+}
+
+/* Items List - StatusRowDetail Styles (UI-3) */
+/* Calm detail-mode rows: text primary + progress bar as single secondary indicator */
+
+.status-row-detail {
+  width: 100%;
+  min-width: 0;
+}
+
+.status-row-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.status-row-detail-title {
+  font-size: var(--text-subheading, 1.25rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-row-detail-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1, 0.25rem);
+}
+
+.status-row-detail-status-text {
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-regular, 400);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Calm progress bar: thin (2-3px), visually subtle */
+.status-row-detail-progress-bar {
+  width: 100%;
+  height: 3px; /* Thin, calm progress bar */
+  background-color: rgba(0, 0, 0, 0.06); /* Lighter background for subtlety */
+  border-radius: 1.5px;
+  overflow: hidden;
+  margin-top: var(--sp-1, 0.25rem);
+}
+
+.status-row-detail-progress-fill {
+  height: 100%;
+  border-radius: 1.5px;
+  transition: width 0.2s ease;
+}
+
+.status-row-detail-progress-green {
+  background-color: rgba(52, 199, 89, 0.6); /* Subtle green */
+}
+
+.status-row-detail-progress-yellow {
+  background-color: rgba(255, 204, 0, 0.6); /* Subtle yellow */
+}
+
+.status-row-detail-progress-orange {
+  background-color: rgba(255, 149, 0, 0.6); /* Subtle orange */
+}
+
+.status-row-detail-progress-red {
+  background-color: rgba(255, 59, 48, 0.6); /* Subtle red */
 }
 
 .service-item-intervals {

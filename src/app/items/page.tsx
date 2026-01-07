@@ -1,8 +1,9 @@
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
-import { calcServiceStatus, compareServiceUrgency } from '@/lib/service/calcServiceStatus';
+import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
+import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
 import ItemsPageClient from './ItemsPageClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
@@ -79,23 +80,30 @@ export default async function ItemsPage() {
     };
   });
 
-  // Сортируем по срочности: OVERDUE наверху, затем SOON, затем OK, затем UNKNOWN
-  // Внутри каждой группы: по степени просрочки/остатку (чем хуже, тем выше)
-  itemsWithStatus.sort(compareServiceUrgency);
+  // Сортируем по срочности согласно спецификации (sections 9-14)
+  // Используем statusVM для получения метаданных для сортировки
+  const itemsWithStatusSorted = sortByUrgency(itemsWithStatus, (item) => {
+    const status = item.statusResult?.status ?? 'UNKNOWN';
+    return {
+      status,
+      daysToReplace: item.statusVM?.daysToReplace ?? null,
+      isPredictionReliable: item.statusVM?.isPredictionReliable ?? false,
+      titleOrId: item.item.title,
+    };
+  });
 
+  // Преобразуем в формат, ожидаемый клиентом (с statusVM для нового UI)
+  const itemsWithLastEvent = itemsWithStatusSorted.map(({ item, lastEvent, statusVM }) => ({
+    item,
+    lastEvent,
+    statusVM, // View-model for Target UI (v1)
+  }));
 
   // Log DB profiler summary (dev-only)
   if (process.env.NODE_ENV !== 'production') {
     const summary = profiler.summary();
     console.log(formatProfilerSummary(summary));
   }
-
-  // Преобразуем в формат, ожидаемый клиентом (с statusVM для нового UI)
-  const itemsWithLastEvent = itemsWithStatus.map(({ item, lastEvent, statusVM }) => ({
-    item,
-    lastEvent,
-    statusVM, // View-model for Target UI (v1)
-  }));
 
   return <ItemsPageClient itemsWithLastEvent={itemsWithLastEvent} latestOdometer={latestOdometer} dailyKmRate={forecastDailyKmRate} />;
 }

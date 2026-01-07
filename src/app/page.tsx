@@ -5,6 +5,7 @@ import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemInput } from '@/lib/home/soonMaintenance';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
+import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
 import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
@@ -290,7 +291,7 @@ export default async function Home() {
 
   // Build statusVM for each soonMaintenanceItem (for Target UI v1)
   // Map soonMaintenanceItems to their corresponding itemsWithStatus to get full context
-  const soonMaintenanceItemsWithVM = soonMaintenanceItems.map(soonItem => {
+  const soonMaintenanceItemsWithVMUnsorted = soonMaintenanceItems.map(soonItem => {
     // Find corresponding item in itemsWithStatus
     const itemWithStatus = itemsWithStatus.find(i => i.item.id === soonItem.id);
     
@@ -320,6 +321,21 @@ export default async function Home() {
       statusVM,
     };
   });
+
+  // Sort by urgency according to spec (sections 9-14)
+  const soonMaintenanceItemsWithVMSorted = sortByUrgency(soonMaintenanceItemsWithVMUnsorted, (item) => {
+    const statusResult = itemsWithStatus.find(i => i.item.id === item.id)?.statusResult;
+    const status = statusResult?.status ?? 'UNKNOWN';
+    return {
+      status,
+      daysToReplace: item.statusVM?.daysToReplace ?? null,
+      isPredictionReliable: item.statusVM?.isPredictionReliable ?? false,
+      titleOrId: item.title,
+    };
+  });
+
+  // Enforce maximum 5 items after sorting (spec section 11.2)
+  const soonMaintenanceItemsWithVM = soonMaintenanceItemsWithVMSorted.slice(0, 5);
 
   // Align status with Soon visibility: if item is in Soon block but has OK status, treat it as SOON for UI
   // This ensures UI consistency - items in Soon block should have SOON status (except OVERDUE)
@@ -387,6 +403,7 @@ export default async function Home() {
       });
     }
   }
+
 
   // Dev-only: TEMP diagnostic log for 2 items (масло двигателя / масляный фильтр)
   // Logs EXACT values used in UI calculation

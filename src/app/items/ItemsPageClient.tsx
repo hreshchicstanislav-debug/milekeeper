@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AddServiceItemForm from '../components/AddServiceItemForm';
 import ItemDetailsSheet from '../components/ItemDetailsSheet';
-import StatusRow from '../components/StatusRow';
+import StatusRowDetail from '../components/StatusRowDetail';
 import { RU, formatNumber } from '@/lib/copy/ru';
 import type { ServiceItem } from '@/lib/db/types';
 import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
@@ -77,7 +77,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
               {itemsWithLastEvent.map(({ item, statusVM }, index) => (
                 <div 
                   key={item.id} 
-                  className={`service-item-row clickable status-accent status-${statusVM.statusColor} ${index === itemsWithLastEvent.length - 1 ? 'last' : ''}`}
+                  className={`service-item-row clickable ${index === itemsWithLastEvent.length - 1 ? 'last' : ''}`}
                   onClick={() => {
                     // Navigate to item details page (mobile-first approach)
                     router.push(`/items/${item.id}`);
@@ -93,7 +93,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
                   }}
                 >
                   <div className="service-item-row-content">
-                    <StatusRow
+                    <StatusRowDetail
                       title={item.title}
                       statusText={statusVM.statusText}
                       statusColor={statusVM.statusColor}
