@@ -1,7 +1,7 @@
 import { listOdometerEntries, getLatestOdometerEntry } from '@/lib/actions/odometerActions';
 import Link from 'next/link';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { LocalDateTime } from '@/app/components/LocalDateTime';
 import DeleteLatestMileageButton from './components/DeleteLatestMileageButton';
 import EditLatestMileageButton from './components/EditLatestMileageButton';
 
@@ -38,8 +38,6 @@ export default async function HistoryPage() {
                     ? entry.mileage_km - previousEntry.mileage_km
                     : null;
 
-                  const formattedDateTime = formatDateTimeRu(entry.occurred_at);
-
                   return (
                     <div key={entry.id} className={`history-row ${index === entries.length - 1 ? 'last' : ''}`}>
                       <div className="history-item-main">
@@ -48,7 +46,7 @@ export default async function HistoryPage() {
                         </div>
                         <div className="history-meta">
                           <span className="history-date">
-                            {formattedDateTime}
+                            <LocalDateTime iso={entry.occurred_at} />
                           </span>
                           {deltaKm !== null && (
                             <span className="history-delta">

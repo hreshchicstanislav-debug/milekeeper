@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from '@/app/components/MarkReplacementButton';
 import AddServiceItemForm from '@/app/components/AddServiceItemForm';
@@ -245,7 +245,7 @@ export default function ItemDetailsPageClient({
                   {history.map((event) => (
                     <li key={event.id} className="item-history-row">
                       <span className="item-history-date">
-                        {formatDateTimeRu(event.occurred_at)}
+                        <LocalDateTime iso={event.occurred_at} />
                       </span>
                       <span className="item-history-mileage">
                         {formatNumber(event.mileage_km)} {RU.common.km}
@@ -282,7 +282,7 @@ export default function ItemDetailsPageClient({
                 <span className="v">
                   {lastEvent ? (
                     <>
-                      {formatDateTimeRu(lastEvent.occurred_at)} • {formatNumber(lastEvent.mileage_km)} {RU.common.km}
+                      <LocalDateTime iso={lastEvent.occurred_at} /> • {formatNumber(lastEvent.mileage_km)} {RU.common.km}
                     </>
                   ) : (
                     RU.items.details.calcNoLastReplacement

@@ -16,7 +16,7 @@ import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 import Link from 'next/link';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { LocalDateTime } from '@/app/components/LocalDateTime';
 
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
@@ -467,7 +467,7 @@ export default async function Home() {
           </div>
           {maxMileageEntry && (
             <div className="mileage-date">
-              {formatDateTimeRu(maxMileageEntry.occurred_at)}
+              <LocalDateTime iso={maxMileageEntry.occurred_at} />
             </div>
           )}
         </div>

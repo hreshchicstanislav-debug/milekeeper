@@ -1,6 +1,6 @@
 import type { OdometerEntry } from '@/lib/db/types';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { LocalDateTime } from '@/app/components/LocalDateTime';
 
 interface OdometerPreviewProps {
   entries: OdometerEntry[];
@@ -20,7 +20,7 @@ export default function OdometerPreview({ entries }: OdometerPreviewProps) {
           {previewEntries.map((entry) => (
             <div key={entry.id} className="dev-odometer-preview-item">
               <span className="dev-odometer-preview-date">
-                {formatDateTimeRu(entry.occurred_at)}
+                <LocalDateTime iso={entry.occurred_at} />
               </span>
               <span className="dev-odometer-preview-arrow">→</span>
               <span className="dev-odometer-preview-mileage">

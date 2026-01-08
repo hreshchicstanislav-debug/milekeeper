@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { RU, formatNumber } from '@/lib/copy/ru';
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from './MarkReplacementButton';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
@@ -509,7 +509,7 @@ export default function ItemDetailsSheet({
                   {history.map((event) => (
                     <li key={event.id} className="item-history-row">
                       <span className="item-history-date">
-                        {formatDateTimeRu(event.occurred_at)}
+                        <LocalDateTime iso={event.occurred_at} />
                       </span>
                       <span className="item-history-mileage">
                         {formatNumber(event.mileage_km)} {RU.common.km}
@@ -546,7 +546,7 @@ export default function ItemDetailsSheet({
                 <span className="v">
                   {lastEvent ? (
                     <>
-                      {formatDateTimeRu(lastEvent.occurred_at)} • {formatNumber(lastEvent.mileage_km)} {RU.common.km}
+                      <LocalDateTime iso={lastEvent.occurred_at} /> • {formatNumber(lastEvent.mileage_km)} {RU.common.km}
                     </>
                   ) : (
                     RU.items.details.calcNoLastReplacement
@@ -648,7 +648,7 @@ export default function ItemDetailsSheet({
                   {statusResult.primary.kind === 'time' && item.measurement_mode === 'calendar' && (
                     <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
                       <span className="k">Следующая замена</span>
-                      <span className="v">{formatDateTimeRu(new Date(statusResult.primary.dueValue))}</span>
+                      <span className="v"><LocalDateTime iso={new Date(statusResult.primary.dueValue).toISOString()} /></span>
                     </div>
                   )}
                 </div>
