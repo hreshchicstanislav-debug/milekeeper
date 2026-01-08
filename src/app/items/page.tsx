@@ -1,9 +1,10 @@
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
-import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
+import { estimateDailyKmRateUnified } from '@/lib/service/odometerForecast';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
+import { getAppNow } from '@/lib/appNow';
 import ItemsPageClient from './ItemsPageClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
@@ -42,11 +43,14 @@ export default async function ItemsPage() {
   
   // Сопоставляем элементы с их последними событиями и вычисляем статус для сортировки
   const currentMileage = latestOdometer?.mileage_km ?? null;
-  const now = new Date();
+  
+  // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
+  const appNow = getAppNow();
   
   // Compute forecast daily km rate for km-mode items
   // Returns EstimateResult with dailyKmRate (always > 0) and isFallback flag
-  const forecastResult = estimateDailyKmRate(odometerEntries);
+  // Uses unified function that requires anchorNow (AppNow) and excludes future entries
+  const forecastResult = estimateDailyKmRateUnified(odometerEntries, appNow);
   const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
   const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
 
@@ -57,7 +61,7 @@ export default async function ItemsPage() {
       latestOdometerMileageKm: currentMileage,
       lastEvent,
       dailyKmRate: forecastDailyKmRate,
-      now,
+      now: appNow, // Use canonical AppNow instead of new Date()
     });
     
     // Build view-model for Target UI (v1) - see docs/elements-status-ui-v1.md

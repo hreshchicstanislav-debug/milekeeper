@@ -1,11 +1,13 @@
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { computeDailyRate, computeConfidence } from '@/lib/prediction/dailyRate';
-import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
+import { estimateDailyKmRateUnified } from '@/lib/service/odometerForecast';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemInput } from '@/lib/home/soonMaintenance';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
+import { getAppNow } from '@/lib/appNow';
+import { getAppMode } from '@/lib/appMode';
 import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
@@ -79,17 +81,20 @@ export default async function Home() {
 
   // Use max mileage entry for "current mileage" display (matches validation logic)
   const currentMileage = maxMileageEntry?.mileage_km ?? null;
-  const now = new Date();
+  
+  // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
+  const appNow = getAppNow();
 
   // Compute daily rate and confidence from odometer entries
   const dailyRate = computeDailyRate(odometerEntries);
   const confidence = computeConfidence(odometerEntries);
   
-  // Compute forecast daily km rate for km-mode items (using simpler estimateDailyKmRate)
-  // Returns EstimateResult with dailyKmRate (always > 0) and isFallback flag
-  const forecastResult = estimateDailyKmRate(odometerEntries);
+  // Compute forecast daily km rate for km-mode items using unified calculation
+  // Always anchored to AppNow, tries 14-day window first, then 60-day, then fallback
+  const forecastResult = estimateDailyKmRateUnified(odometerEntries, appNow);
   const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
   const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
+  const windowDaysUsed = forecastResult.windowDaysUsed; // 14, 60, or null if fallback
   
   // Dev-only: ensure dailyKmRate is a number
   if (process.env.NODE_ENV !== 'production') {
@@ -103,12 +108,13 @@ export default async function Home() {
     const lastEvent = lastEventsMap[item.id] ?? null;
     
     // Use new calcServiceStatus helper with dailyKmRate for forecasting
+    // Pass appNow (canonical AppNow) instead of new Date() for time-based calculations
     const statusResult = calcServiceStatus({
       serviceItem: item,
       latestOdometerMileageKm: currentMileage,
       lastEvent,
       dailyKmRate: forecastDailyKmRate,
-      now,
+      now: appNow,
     });
 
     // Map to existing interface (for compatibility)
@@ -123,7 +129,7 @@ export default async function Home() {
         // For km mode, predict date if dailyRate is available
         if (dailyRate !== null && dailyRate > 0 && remainingKm !== null && remainingKm > 0) {
           const predictedDays = Math.ceil(remainingKm / dailyRate);
-          const predictedDate = new Date(now);
+          const predictedDate = new Date(appNow);
           predictedDate.setDate(predictedDate.getDate() + predictedDays);
           deadlineDate = predictedDate;
         }
@@ -155,7 +161,7 @@ export default async function Home() {
       if (item.interval_days !== null) {
         const dueDate = new Date(lastServiceDate);
         dueDate.setDate(dueDate.getDate() + item.interval_days);
-        oldRemainingDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        oldRemainingDays = Math.ceil((dueDate.getTime() - appNow.getTime()) / (1000 * 60 * 60 * 24));
       }
       
       if (oldRemainingKm !== null && oldRemainingKm <= 0) {
@@ -475,6 +481,11 @@ export default async function Home() {
           itemsWithVM={soonMaintenanceItemsWithVM} 
           dailyKmRate={forecastDailyKmRate}
           isFallbackRate={isFallbackRate}
+          windowDaysUsed={windowDaysUsed}
+          samplesUsed={forecastResult.samplesUsed}
+          fallbackReason={forecastResult.fallbackReason}
+          odometerEntries={process.env.NODE_ENV !== 'production' ? odometerEntries : []}
+          latestEntry={process.env.NODE_ENV !== 'production' ? (odometerEntries[0] ?? null) : null}
         />
 
         {/* Upcoming Replacements Section - Adaptive Dashboard */}

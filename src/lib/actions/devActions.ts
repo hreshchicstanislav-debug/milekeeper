@@ -290,16 +290,19 @@ export interface SimulateTripResult {
   entry: OdometerEntry;
   dayIncrement: number;
   totalIncrementKm: number;
+  newAppNowIso?: string; // ISO string of the last inserted entry's occurred_at (for AppNow advancement in TEST mode)
 }
 
 /**
  * Simulate a trip over a specified time range
  * @param range Time range: 'day', 'week', or 'month'
+ * @param baseNowIso Optional ISO string of AppNow to use as base date (for TEST mode). If not provided, uses the date of the previous entry (backward compatible).
  * @returns The inserted odometer entry with simulation details
  * @throws Error if no odometer entries exist
  */
 export async function simulateTripRange(
-  range: 'day' | 'week' | 'month'
+  range: 'day' | 'week' | 'month',
+  baseNowIso?: string
 ): Promise<SimulateTripResult> {
   const supabase = createAdminClient();
 
@@ -319,7 +322,19 @@ export async function simulateTripRange(
 
   const baseEntry = maxMileageEntry;
   const baseMileage = baseEntry.mileage_km;
-  const baseDate = new Date(baseEntry.occurred_at);
+  
+  // Use baseNowIso if provided (TEST mode with AppNow), otherwise use previous entry's date (backward compatible)
+  let baseDate: Date;
+  if (baseNowIso) {
+    baseDate = new Date(baseNowIso);
+    // Validate baseNowIso
+    if (isNaN(baseDate.getTime())) {
+      throw new Error(`Invalid baseNowIso: ${baseNowIso}`);
+    }
+  } else {
+    // Backward compatible: use previous entry's date
+    baseDate = new Date(baseEntry.occurred_at);
+  }
 
   // Determine total increment and day increment based on range
   let totalIncrementKm: number;
@@ -415,6 +430,7 @@ export async function simulateTripRange(
     entry: inserted,
     dayIncrement,
     totalIncrementKm,
+    newAppNowIso: inserted.occurred_at, // Return the occurred_at of the inserted entry for AppNow advancement
   };
 }
 

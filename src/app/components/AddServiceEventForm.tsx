@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { addServiceEvent } from '@/lib/actions/serviceActions';
 import { RU } from '@/lib/copy/ru';
 import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
 import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
 
@@ -210,7 +211,7 @@ export default function AddServiceEventForm({
   const [mileageKm, setMileageKm] = useState(
     defaultMileage ? formatMileageInput(String(defaultMileage)) : ''
   );
-  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 16));
+  const [occurredAt, setOccurredAt] = useState(toDateTimeLocalValue(new Date()));
   const [showDate, setShowDate] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
@@ -241,7 +242,7 @@ export default function AddServiceEventForm({
       // Сбрасываем форму при открытии
       setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
       setNote('');
-      setOccurredAt(new Date().toISOString().slice(0, 16));
+      setOccurredAt(toDateTimeLocalValue(new Date()));
       setShowDate(false);
       setShowNote(false);
       setError(null);
@@ -272,7 +273,7 @@ export default function AddServiceEventForm({
     try {
       await addServiceEvent({
         serviceItemId,
-        occurredAt: new Date(occurredAt),
+        occurredAt: fromDateTimeLocalValue(occurredAt),
         mileageKm: mileage,
         note: note ? trimWhitespace(note) : null,
       });
@@ -280,7 +281,7 @@ export default function AddServiceEventForm({
       // Success: reset form
       setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
       setNote('');
-      setOccurredAt(new Date().toISOString().slice(0, 16));
+      setOccurredAt(toDateTimeLocalValue(new Date()));
       setShowDate(false);
       setShowNote(false);
       

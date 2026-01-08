@@ -3113,6 +3113,190 @@ p {
   border: 1px solid #ffcccc;
 }
 
+/* App Mode Toggle */
+.dev-tools-mode-toggle {
+  margin-bottom: var(--sp-4, 1rem);
+  padding-bottom: var(--sp-4, 1rem);
+  border-bottom: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+}
+
+.dev-tools-mode-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px; /* Touch target >= 44px */
+  gap: var(--sp-3, 0.75rem);
+}
+
+.dev-tools-mode-toggle-label {
+  font-size: var(--text-sub, 0.9375rem);
+  font-weight: var(--fw-medium, 500);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dev-tools-mode-switch {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 15.5px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+  /* Ensure touch target is at least 44px */
+  min-width: 51px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 2px;
+}
+
+.dev-tools-mode-switch:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.dev-tools-mode-switch:active {
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
+.dev-tools-mode-switch.dev-tools-mode-switch-on {
+  background-color: #34c759; /* iOS green */
+}
+
+.dev-tools-mode-switch.dev-tools-mode-switch-on:hover {
+  background-color: #30d158; /* iOS green hover */
+}
+
+.dev-tools-mode-switch.dev-tools-mode-switch-on:active {
+  background-color: #2fc653; /* iOS green active */
+}
+
+.dev-tools-mode-switch-thumb {
+  width: 27px;
+  height: 27px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  display: block;
+}
+
+.dev-tools-mode-switch.dev-tools-mode-switch-on .dev-tools-mode-switch-thumb {
+  transform: translateX(20px); /* 51px - 27px - 2px (left padding) - 2px (right padding) = 20px */
+}
+
+.dev-tools-mode-toggle-helper {
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.4;
+  padding-left: 0;
+}
+
+/* Test Clock UI */
+.dev-tools-test-clock {
+  margin-bottom: var(--sp-4, 1rem);
+  padding-bottom: var(--sp-4, 1rem);
+  border-bottom: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+}
+
+.dev-tools-test-clock-header {
+  margin-bottom: var(--sp-3, 0.75rem);
+}
+
+.dev-tools-test-clock-title {
+  font-size: var(--text-sub, 0.9375rem);
+  font-weight: var(--fw-semibold, 600);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  margin: 0 0 var(--sp-2, 0.5rem) 0;
+}
+
+.dev-tools-test-clock-display {
+  font-size: 0.875rem;
+  font-weight: var(--fw-medium, 500);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  background-color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-sm, 8px);
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  letter-spacing: 0.02em;
+}
+
+.dev-tools-test-clock-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+  margin-bottom: var(--sp-3, 0.75rem);
+}
+
+.dev-tools-test-clock-input {
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.dev-tools-test-clock-input-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: var(--fw-medium, 500);
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  margin-bottom: var(--sp-1, 0.25rem);
+}
+
+.dev-tools-test-clock-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.dev-tools-test-clock-input-field {
+  flex: 1;
+  font-size: 0.875rem;
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-sm, 8px);
+  background-color: #fff;
+  color: var(--text-primary, rgba(0, 0, 0, 0.9));
+  min-height: 44px; /* Touch target */
+  font-family: inherit;
+}
+
+.dev-tools-test-clock-input-field:focus {
+  outline: none;
+  border-color: var(--control-primary-bg, #007aff);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.dev-tools-test-clock-helper {
+  margin-top: var(--sp-2, 0.5rem);
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.4;
+  padding-left: 0;
+}
+
+/* Simulation disabled message (LIVE mode) */
+.dev-tools-simulation-disabled {
+  padding: var(--sp-3, 0.75rem);
+  background-color: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-sm, 8px);
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.dev-tools-simulation-disabled-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.4;
+  text-align: center;
+}
+
 /* Dev Odometer Preview */
 .dev-preview-section {
   margin-top: 1.5rem;

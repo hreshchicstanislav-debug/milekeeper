@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { updateLatestOdometerEntry } from '@/lib/actions/odometerActions';
 import { RU } from '@/lib/copy/ru';
 import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import type { OdometerEntry } from '@/lib/db/types';
 import { useSwipeToClose } from './useSwipeToClose';
 
@@ -23,7 +24,7 @@ export default function EditLatestMileage({
     formatMileageInput(String(latestEntry.mileage_km))
   );
   const [occurredAt, setOccurredAt] = useState(
-    new Date(latestEntry.occurred_at).toISOString().slice(0, 16)
+    toDateTimeLocalValue(new Date(latestEntry.occurred_at))
   );
   const [showDate, setShowDate] = useState(false);
   const [showNote, setShowNote] = useState(false);
@@ -38,7 +39,7 @@ export default function EditLatestMileage({
     if (isOpen) {
       // Сбрасываем форму при открытии с данными последней записи
       setMileageKm(formatMileageInput(String(latestEntry.mileage_km)));
-      setOccurredAt(new Date(latestEntry.occurred_at).toISOString().slice(0, 16));
+      setOccurredAt(toDateTimeLocalValue(new Date(latestEntry.occurred_at)));
       setNote(latestEntry.note || '');
       setShowDate(false);
       setShowNote(false);
@@ -63,7 +64,7 @@ export default function EditLatestMileage({
     try {
       await updateLatestOdometerEntry({
         mileageKm: mileage,
-        occurredAt: new Date(occurredAt),
+        occurredAt: fromDateTimeLocalValue(occurredAt),
         note: note ? trimWhitespace(note) : null,
       });
 
