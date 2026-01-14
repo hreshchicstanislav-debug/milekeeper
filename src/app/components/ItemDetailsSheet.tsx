@@ -9,6 +9,7 @@ import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { useToast } from './ToastProvider';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
 import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
+import { getAppNow } from '@/lib/appNow';
 
 // Hook for swipe-to-close gesture
 function useSwipeToClose<T extends HTMLElement>(
@@ -400,11 +401,12 @@ export default function ItemDetailsSheet({
     latestOdometerMileageKm: currentMileage,
     lastEvent,
     dailyKmRate,
+    now: getAppNow(),
   });
 
   // Dev-only: compare old vs new logic (temporary)
   if (process.env.NODE_ENV !== 'production' && lastEvent && currentMileage !== null) {
-    const now = new Date();
+    const now = getAppNow();
     const lastServiceMileage = lastEvent.mileage_km;
     const lastServiceDate = new Date(lastEvent.occurred_at);
     

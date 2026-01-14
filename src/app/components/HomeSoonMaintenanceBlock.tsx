@@ -46,7 +46,8 @@ export default function HomeSoonMaintenanceBlock({
   
   // Dev-only: Get app mode and AppNow for diagnostics
   const appMode = typeof window !== 'undefined' ? getAppMode() : AppMode.LIVE;
-  const appNow = typeof window !== 'undefined' ? getAppNow() : new Date();
+  // TO-BE: use single time source even in diagnostics
+  const appNow = getAppNow();
   
   // Dev-only: Calculate diagnostic data
   const isDev = process.env.NODE_ENV !== 'production';

@@ -105,7 +105,7 @@ describe('calcServiceStatus', () => {
       expect(result.status).toBe('SOON');
     });
 
-    it('should use fallback dailyKmRate (30) when dailyKmRate is null', () => {
+    it('should NOT use fallback dailyKmRate when dailyKmRate is null (TO-BE: insufficient data)', () => {
       // Given: km-mode item without dailyKmRate
       const item = createServiceItem({
         measurement_mode: 'km',
@@ -126,11 +126,9 @@ describe('calcServiceStatus', () => {
         now,
       });
       
-      // Then: should use fallback 30 km/day
-      expect(result.dailyKmRateUsed).toBe(30);
-      
-      // And: remainingDays should be ~33.33 (1000/30)
-      expect(result.remainingDays).toBeCloseTo(33.33, 1);
+      // Then (TO-BE): no fallback; remainingDays is null and dailyKmRateUsed is null
+      expect(result.dailyKmRateUsed).toBeNull();
+      expect(result.remainingDays).toBeNull();
     });
 
     it('should set status to OVERDUE when remainingKm <= 0 (km-mode)', () => {
@@ -174,6 +172,7 @@ describe('calcServiceStatus', () => {
         latestOdometerMileageKm: 150000,
         lastEvent: null,
         dailyKmRate: 100,
+        now: new Date('2026-01-15T00:00:00Z'),
       });
       
       // Then: status should be UNKNOWN
@@ -257,6 +256,7 @@ describe('calcServiceStatus', () => {
         serviceItem: item,
         latestOdometerMileageKm: 160000,
         lastEvent,
+        now: new Date('2025-12-10T00:00:00Z'),
       });
       
       // Then: status should be UNKNOWN
@@ -372,14 +372,15 @@ describe('calcServiceStatus', () => {
         serviceItem: item,
         latestOdometerMileageKm: 159995, // 5 km remaining
         lastEvent,
+        dailyKmRate: 1, // TO-BE: enable km due date (daysLeftKm = ceil(5/1) = 5)
         now: new Date('2025-12-20T00:00:00Z'), // 12 days remaining
       });
       
-      // Then: remainingKm should be 5, remainingDays should be ~12
+      // Then: remainingKm should be 5, and (TO-BE) remainingDays is primary days-left for limiting factor
       expect(result3.remainingKm).toBe(5);
-      expect(result3.remainingDays).toBeCloseTo(12, 1);
+      expect(result3.remainingDays).toBe(5);
       
-      // And: limiting factor should be 'km' (5 <= 12, so km reaches 0 sooner)
+      // And: limiting factor should be 'km' (dueByKmDate earlier than dueByTimeDate)
       expect(result3.limitingFactor).toBe('km');
     });
   });
@@ -403,6 +404,7 @@ describe('calcServiceStatus', () => {
         latestOdometerMileageKm: currentMileage,
         lastEvent,
         dailyKmRate,
+        now: new Date('2026-01-15T00:00:00Z'),
       });
       
       // Then: both remainingKm and remainingDays should be negative
@@ -430,6 +432,7 @@ describe('calcServiceStatus', () => {
         latestOdometerMileageKm: currentMileage,
         lastEvent,
         dailyKmRate: 100,
+        now: new Date('2026-01-15T00:00:00Z'),
       });
       
       // Then: remainingKm should be 0

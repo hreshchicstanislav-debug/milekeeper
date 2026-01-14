@@ -1,7 +1,7 @@
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
-import { computeDailyRate, computeConfidence } from '@/lib/prediction/dailyRate';
-import { estimateDailyKmRateUnified } from '@/lib/service/odometerForecast';
+import { computeConfidence } from '@/lib/prediction/dailyRate';
+import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemInput } from '@/lib/home/soonMaintenance';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
@@ -85,23 +85,18 @@ export default async function Home() {
   // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
   const appNow = getAppNow();
 
-  // Compute daily rate and confidence from odometer entries
-  const dailyRate = computeDailyRate(odometerEntries);
+  // TO-BE: Compute daily mileage rate (rolling 60 days + fallback 14 active days)
+  const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
+  const dailyRate = dailyRateResult.dailyRate;
   const confidence = computeConfidence(odometerEntries);
   
-  // Compute forecast daily km rate for km-mode items using unified calculation
-  // Always anchored to AppNow, tries 14-day window first, then 60-day, then fallback
-  const forecastResult = estimateDailyKmRateUnified(odometerEntries, appNow);
-  const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
-  const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
-  const windowDaysUsed = forecastResult.windowDaysUsed; // 14, 60, or null if fallback
+  // TO-BE: Single dailyRate is used for forecasting everywhere
+  const forecastDailyKmRate = dailyRate; // number | null
+  const isFallbackRate = dailyRateResult.isFallback;
+  const windowDaysUsed = dailyRateResult.isFallback ? null : 60;
   
   // Dev-only: ensure dailyKmRate is a number
-  if (process.env.NODE_ENV !== 'production') {
-    if (typeof forecastDailyKmRate !== 'number' || forecastDailyKmRate <= 0) {
-      console.warn('[Home] Invalid dailyKmRate:', { forecastDailyKmRate, forecastResult, odometerEntriesCount: odometerEntries.length });
-    }
-  }
+  // (Dev logs that assumed numeric dailyKmRate were removed; TO-BE allows insufficient data => null)
 
   // Compute status for each service item using new helper
   const itemsWithStatus: ServiceItemWithStatus[] = serviceItems.map((item) => {
@@ -126,7 +121,7 @@ export default async function Home() {
     let deadlineDate: Date | null = null;
     if (statusResult.status !== 'UNKNOWN') {
       if (statusResult.primary.kind === 'km') {
-        // For km mode, predict date if dailyRate is available
+        // TO-BE: predict date from km only if dailyRate is available (>0)
         if (dailyRate !== null && dailyRate > 0 && remainingKm !== null && remainingKm > 0) {
           const predictedDays = Math.ceil(remainingKm / dailyRate);
           const predictedDate = new Date(appNow);
@@ -205,7 +200,7 @@ export default async function Home() {
       console.log('[Home] Forecast days debug:', {
         dailyKmRate: forecastDailyKmRate,
         dailyKmRateType: typeof forecastDailyKmRate,
-        isFallback: forecastResult.isFallback,
+        isFallback: isFallbackRate,
         odometerEntriesCount: odometerEntries.length,
         currentMileage,
         items: debugItems.map(({ item, remainingKm, remainingDays, urgency, lastEvent, statusResult }) => ({
@@ -479,11 +474,11 @@ export default async function Home() {
         {/* Soon Maintenance Block - Conditional */}
         <HomeSoonMaintenanceBlock 
           itemsWithVM={soonMaintenanceItemsWithVM} 
-          dailyKmRate={forecastDailyKmRate}
+        dailyKmRate={forecastDailyKmRate ?? undefined}
           isFallbackRate={isFallbackRate}
           windowDaysUsed={windowDaysUsed}
-          samplesUsed={forecastResult.samplesUsed}
-          fallbackReason={forecastResult.fallbackReason}
+        samplesUsed={undefined}
+        fallbackReason={dailyRateResult.reason ?? null}
           odometerEntries={process.env.NODE_ENV !== 'production' ? odometerEntries : []}
           latestEntry={process.env.NODE_ENV !== 'production' ? (odometerEntries[0] ?? null) : null}
         />

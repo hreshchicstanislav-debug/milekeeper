@@ -83,12 +83,12 @@ export function buildServiceItemStatusVM(
   } else if (context.measurement_mode === 'km') {
     // Km mode: calculate totalDays from interval_km / avgDailyKm
     if (context.interval_km !== null && context.interval_km > 0) {
-      // Use dailyKmRate from context, with fallback to 30 if needed
-      const rateToUse = context.dailyKmRate !== null && context.dailyKmRate > 0
-        ? context.dailyKmRate
-        : 30; // Fallback
-      
-      totalDays = context.interval_km / rateToUse;
+      // TO-BE: totalDays only when dailyKmRate is available (>0). No implicit fallback.
+      if (context.dailyKmRate !== null && context.dailyKmRate > 0) {
+        totalDays = context.interval_km / context.dailyKmRate;
+      } else {
+        totalDays = null;
+      }
     }
   }
 
@@ -98,14 +98,9 @@ export function buildServiceItemStatusVM(
     remainingRatio = daysToReplace / totalDays;
   }
 
-  // Determine if prediction is reliable
-  // According to spec: unreliable if isFallbackRate===true OR dailyKmRateUsed===30 OR confidence==='low'
-  // Note: All conditions must be checked (undefined/null are treated as reliable)
-  const isPredictionReliable = !(
-    context.isFallbackRate === true ||
-    (statusResult.dailyKmRateUsed !== null && statusResult.dailyKmRateUsed !== undefined && statusResult.dailyKmRateUsed === 30) ||
-    context.confidence === 'low'
-  );
+  // TO-BE: prediction is considered reliable only when we have a valid dailyKmRate (>0)
+  // (confidence may still be passed by caller, but TO-BE MVP relies on sufficient data.)
+  const isPredictionReliable = !!(context.dailyKmRate !== null && context.dailyKmRate > 0) && context.confidence !== 'low';
 
   // Determine statusColor based on status and remainingRatio
   let statusColor: 'green' | 'yellow' | 'orange' | 'red';
@@ -133,19 +128,17 @@ export function buildServiceItemStatusVM(
   // Determine statusText
   let statusText: string;
   
-  if (!isPredictionReliable) {
-    // Unreliable prediction -> "Скоро" without days
-    statusText = 'Скоро';
+  if (daysToReplace === null) {
+    // TO-BE: insufficient data -> explicit message
+    statusText = 'Недостаточно данных';
   } else if (statusResult.status === 'OVERDUE') {
     // Overdue -> "Просрочено"
     statusText = 'Просрочено';
-  } else if (daysToReplace !== null) {
-    // Reliable prediction -> "~N дней" (rounded to integer)
+  } else {
+    // TO-BE: days are integer-ish already (ceil for km-mode, calendar diff for time-mode),
+    // but we keep the "~" prefix for display consistency.
     const daysRounded = Math.round(daysToReplace);
     statusText = `~${daysRounded} дней`;
-  } else {
-    // No data available -> fallback text
-    statusText = 'Скоро';
   }
 
   return {

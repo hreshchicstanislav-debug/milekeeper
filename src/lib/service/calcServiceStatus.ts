@@ -5,6 +5,7 @@
  */
 
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
+import { toLocalDayKey } from '@/lib/service/dailyMileageRateToBe';
 
 export type LimitingFactor = 'km' | 'time' | 'none';
 export type Status = 'OVERDUE' | 'SOON' | 'OK' | 'UNKNOWN';
@@ -43,8 +44,8 @@ interface CalcInput {
   serviceItem: ServiceItem;
   latestOdometerMileageKm: number | null;
   lastEvent: ServiceEvent | null;
-  dailyKmRate?: number | null; // Average km/day for forecasting (optional)
-  now?: Date;
+  dailyKmRate?: number | null; // TO-BE: avgKmPerDay (nullable => insufficient data)
+  now: Date; // TO-BE: single canonical now is required at call sites
 }
 
 /**
@@ -57,10 +58,30 @@ function roundDays(days: number): number {
 }
 
 /**
+ * TO-BE: Add calendar days while treating Feb 29 as a non-counted day.
+ * This matches the TO-BE acceptance scenario where interval_days=365 maps to the same calendar date next year
+ * even in leap years.
+ */
+function addCalendarDaysSkippingLeap(baseLocalMidnight: Date, intervalDays: number): Date {
+  const d = new Date(baseLocalMidnight);
+  let remaining = intervalDays;
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1);
+    // Skip counting Feb 29 (leap day) toward interval_days
+    if (d.getMonth() === 1 && d.getDate() === 29) {
+      continue;
+    }
+    remaining -= 1;
+  }
+  return d;
+}
+
+/**
  * Calculate service status with limiting factor logic
  */
 export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
-  const { serviceItem, latestOdometerMileageKm, lastEvent, dailyKmRate = null, now = new Date() } = input;
+  // TO-BE: single source of time. `now` is provided by call sites (no implicit new Date()).
+  const { serviceItem, latestOdometerMileageKm, lastEvent, dailyKmRate = null, now } = input;
   
   // Dev-only: validate dailyKmRate type (should be number or null)
   if (process.env.NODE_ENV !== 'production') {
@@ -94,117 +115,54 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
   const lastServiceMileage = lastEvent.mileage_km;
   const lastServiceDate = new Date(lastEvent.occurred_at);
 
+  // TO-BE: derive local `today` from `now` (single time source), as a local calendar date.
+  const todayKey = toLocalDayKey(now);
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
   // Compute remaining km if interval_km exists and we have current mileage
-  let remainingKm: number | null = null;
-  let dueMileageKm: number | null = null;
+  let kmLeft: number | null = null;
+  let nextServiceKm: number | null = null;
   if (serviceItem.interval_km !== null && latestOdometerMileageKm !== null) {
-    dueMileageKm = lastServiceMileage + serviceItem.interval_km;
-    remainingKm = dueMileageKm - latestOdometerMileageKm;
+    nextServiceKm = lastServiceMileage + serviceItem.interval_km;
+    kmLeft = nextServiceKm - latestOdometerMileageKm;
   }
 
-  // STRICT BRANCHING: Compute remaining days based on measurement_mode
-  // For 'km' mode: NEVER compute dueDate (time-based deadline doesn't exist)
-  // For 'calendar' mode: compute dueDate from lastEvent + interval_days
-  let remainingDays: number | null = null;
-  let predictedDaysFromKm: number | null = null;
-  let dueDate: Date | null = null;
-  
-  if (serviceItem.measurement_mode === 'km') {
-    // Km mode: predict days from remainingKm using dailyKmRate
-    // remainingDays MUST be computed if remainingKm exists (it's the public field for UI)
-    // NOTE: dueDate is NEVER computed for km mode (no time-based deadline)
-    if (remainingKm !== null && Number.isFinite(remainingKm)) {
-      // Validate and normalize dailyKmRate BEFORE division
-      // Ensure dailyKmRate is a finite positive number, otherwise use fallback
-      let rateToUse: number;
-      if (dailyKmRate !== null && typeof dailyKmRate === 'number' && Number.isFinite(dailyKmRate) && dailyKmRate > 0) {
-        rateToUse = dailyKmRate;
-      } else {
-        // Fallback to 30 km/day if dailyKmRate is invalid
-        rateToUse = 30;
-        
-        // Dev-only: warn if fallback is used
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('[calcServiceStatus] km mode: using fallback rate (30 km/day)', {
-            itemTitle: serviceItem.title,
-            dailyKmRate,
-            dailyKmRateType: typeof dailyKmRate,
-            remainingKm,
-          });
-        }
-      }
-      
-      // Calculate predicted days (use division to preserve precision and sign)
-      // remainingKm can be negative (overdue), so predictedDaysFromKm will also be negative
-      predictedDaysFromKm = remainingKm / rateToUse;
-      
-      // Normalize near-zero (only for values very close to 0, preserve sign otherwise)
-      if (Math.abs(predictedDaysFromKm) < 0.01) {
-        predictedDaysFromKm = 0;
-      }
-      
-      // Ensure remainingDays is set (this is the public field for UI)
-      // IMPORTANT: remainingDays must never be null for km-mode if remainingKm exists and is finite
-      // IMPORTANT: Do NOT clamp to >=0 - negative values indicate overdue status
-      remainingDays = predictedDaysFromKm;
-      
-      // Final safety check: ensure remainingDays is finite (should always be true after division)
-      if (!Number.isFinite(remainingDays)) {
-        // This should never happen, but if it does, use fallback calculation
-        if (process.env.NODE_ENV !== 'production') {
-          console.error('[calcServiceStatus] km mode: remainingDays is not finite after calculation!', {
-            itemTitle: serviceItem.title,
-            remainingKm,
-            rateToUse,
-            predictedDaysFromKm,
-            remainingDays,
-          });
-        }
-        // Fallback: use a safe value (remainingKm / 30)
-        remainingDays = remainingKm / 30;
-        predictedDaysFromKm = remainingDays;
-      }
-    } else {
-      // No remainingKm available or remainingKm is not finite, remainingDays stays null
-      remainingDays = null;
-      predictedDaysFromKm = null;
-    }
-  } else if (serviceItem.measurement_mode === 'calendar') {
-    // Calendar mode: use interval_days directly
-    if (serviceItem.interval_days !== null) {
-      dueDate = new Date(lastServiceDate);
-      dueDate.setDate(dueDate.getDate() + serviceItem.interval_days);
-      const daysDiff = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-      remainingDays = roundDays(daysDiff);
-    } else {
-      // Missing interval_days for calendar mode
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('[calcServiceStatus] calendar mode: missing interval_days', {
-          itemTitle: serviceItem.title,
-          itemId: serviceItem.id,
-        });
-      }
-      // Return safe UNKNOWN result
-      return {
-        status: 'UNKNOWN',
-        limitingFactor: 'none',
-        primary: {
-          kind: 'time',
-          remainingValue: 0,
-          dueValue: 0,
-          unit: 'дней',
-          label: 'По времени',
-        },
-        why: 'Нет данных об интервале в днях для режима "По календарю"',
-        remainingKm: remainingKm,
-        remainingDays: null,
-      };
-    }
+  // TO-BE: compute time-based dueDate strictly by local calendar date + intervalDays
+  let dueDateTime: Date | null = null;
+  let daysLeftTime: number | null = null;
+  if (serviceItem.interval_days !== null) {
+    const lastServiceDayKey = toLocalDayKey(lastServiceDate);
+    const lastServiceMidnight = new Date(
+      lastServiceDate.getFullYear(),
+      lastServiceDate.getMonth(),
+      lastServiceDate.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    // (lastServiceDayKey kept for debugging/logging parity; lastServiceMidnight is the actual base)
+    void lastServiceDayKey;
+
+    dueDateTime = addCalendarDaysSkippingLeap(lastServiceMidnight, serviceItem.interval_days);
+    daysLeftTime = Math.round((dueDateTime.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  // TO-BE: km-mode daysLeft = ceil(kmLeft / dailyRate) only if dailyRate is valid (>0)
+  let daysLeftKm: number | null = null;
+  if (kmLeft !== null && dailyKmRate !== null && typeof dailyKmRate === 'number' && Number.isFinite(dailyKmRate) && dailyKmRate > 0) {
+    daysLeftKm = Math.ceil(kmLeft / dailyKmRate);
+  }
+
+  // TO-BE: due-by-km date uses baseDate = today (local) + daysLeftKm
+  let dueByKmDate: Date | null = null;
+  if (daysLeftKm !== null) {
+    dueByKmDate = new Date(todayMidnight);
+    dueByKmDate.setDate(dueByKmDate.getDate() + daysLeftKm);
   }
 
   // STRICT BRANCHING: Determine limiting factor based on measurement_mode
-  // For 'km' mode: limitingFactor can ONLY be 'km' (never 'time')
-  // For 'calendar' mode: limitingFactor can be 'time' or 'km' (if both intervals exist)
+  // TO-BE: limiting factor is determined by earliest due date when BOTH criteria exist.
   let limitingFactor: LimitingFactor = 'none';
   let primaryRemaining: number | null = null;
   let primaryDue: number | null = null;
@@ -213,24 +171,30 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
   let secondaryDue: number | null = null;
   let secondaryKind: 'km' | 'time' | null = null;
 
+  const hasKmCriterion = serviceItem.interval_km !== null;
+  const hasTimeCriterion = serviceItem.interval_days !== null;
+
+  // If no criteria effectively available (should be prevented by DB constraint, but guard anyway)
+  if (!hasKmCriterion && !hasTimeCriterion) {
+    return {
+      status: 'UNKNOWN',
+      limitingFactor: 'none',
+      primary: {
+        kind: 'time',
+        remainingValue: 0,
+        dueValue: 0,
+        unit: 'дней',
+        label: 'По времени',
+      },
+      why: 'Нет данных об интервалах обслуживания',
+      remainingKm: null,
+      remainingDays: null,
+    };
+  }
+
+  // For km-mode items, primary is km criterion (time may exist but is secondary by TO-BE display rule).
   if (serviceItem.measurement_mode === 'km') {
-    // Km mode: limitingFactor is ALWAYS 'km' (never 'time')
-    // We can have remainingDays (predicted), but it's never the limiting factor
-    if (remainingKm !== null) {
-      limitingFactor = 'km';
-      primaryRemaining = remainingKm;
-      primaryDue = dueMileageKm!;
-      primaryKind = 'km';
-      // Add predicted days as secondary if available
-      if (remainingDays !== null) {
-        secondaryRemaining = remainingDays;
-        secondaryKind = 'time';
-        // For km mode, secondaryDue is not a real dueDate, use a placeholder
-        // (we don't have a real dueDate for predicted days)
-        secondaryDue = null; // No real dueDate for predicted days
-      }
-    } else {
-      // No remainingKm available
+    if (kmLeft === null || nextServiceKm === null) {
       return {
         status: 'UNKNOWN',
         limitingFactor: 'none',
@@ -241,72 +205,85 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
           unit: 'км',
           label: 'По пробегу',
         },
-        why: latestOdometerMileageKm === null 
-          ? 'Нет данных о текущем пробеге' 
-          : 'Нет данных для расчёта по пробегу',
+        why: latestOdometerMileageKm === null ? 'Нет данных о текущем пробеге' : 'Нет данных для расчёта по пробегу',
         remainingKm: null,
         remainingDays: null,
       };
     }
-  } else if (serviceItem.measurement_mode === 'calendar') {
-    // Calendar mode: can have both km and time, or just time
-    // dueDate MUST be computed (checked above)
-    if (remainingKm !== null && remainingDays !== null && dueDate !== null) {
-      // Both available: choose the one that reaches 0 sooner (smaller remaining value)
-      // If one is already overdue (<=0), it becomes limiting
-      if (remainingKm <= 0 || remainingDays <= 0) {
-        // One is overdue: the overdue one is limiting
-        if (remainingKm <= 0) {
+
+    limitingFactor = 'km';
+    primaryKind = 'km';
+    primaryRemaining = kmLeft;
+    primaryDue = nextServiceKm;
+
+    // Secondary (days forecast) only if dailyRate is available
+    if (daysLeftKm !== null) {
+      secondaryKind = 'time';
+      secondaryRemaining = daysLeftKm;
+      secondaryDue = dueByKmDate ? dueByKmDate.getTime() : null;
+    }
+  } else {
+    // calendar measurement_mode: may be time-only, km-only, or mixed.
+    const dueByTimeDate = dueDateTime;
+
+    if (hasKmCriterion && hasTimeCriterion) {
+      // Mixed: choose earlier due date among km and time (if km due date available).
+      if (dueByKmDate !== null && dueByTimeDate !== null) {
+        if (dueByKmDate.getTime() < dueByTimeDate.getTime()) {
           limitingFactor = 'km';
-          primaryRemaining = remainingKm;
-          primaryDue = dueMileageKm!;
           primaryKind = 'km';
-          secondaryRemaining = remainingDays;
-          secondaryDue = dueDate.getTime();
+          primaryRemaining = kmLeft;
+          primaryDue = nextServiceKm;
           secondaryKind = 'time';
+          secondaryRemaining = daysLeftTime;
+          secondaryDue = dueByTimeDate.getTime();
         } else {
           limitingFactor = 'time';
-          primaryRemaining = remainingDays;
-          primaryDue = dueDate.getTime();
           primaryKind = 'time';
-          secondaryRemaining = remainingKm;
-          secondaryDue = dueMileageKm!;
+          primaryRemaining = daysLeftTime;
+          primaryDue = dueByTimeDate.getTime();
           secondaryKind = 'km';
+          secondaryRemaining = kmLeft;
+          secondaryDue = nextServiceKm;
         }
+      } else if (dueByTimeDate !== null) {
+        // Time is available but km due date isn't (insufficient dailyRate) => time is limiting by availability.
+          limitingFactor = 'time';
+          primaryKind = 'time';
+        primaryRemaining = daysLeftTime;
+        primaryDue = dueByTimeDate.getTime();
+        // Secondary km shown if kmLeft exists
+        if (kmLeft !== null && nextServiceKm !== null) {
+          secondaryKind = 'km';
+          secondaryRemaining = kmLeft;
+          secondaryDue = nextServiceKm;
+        }
+      } else if (dueByKmDate !== null) {
+        // Km due date exists but time doesn't (shouldn't happen if interval_days exists, but guard)
+        limitingFactor = 'km';
+        primaryKind = 'km';
+        primaryRemaining = kmLeft;
+        primaryDue = nextServiceKm;
       } else {
-        // Both positive: choose the one with smaller remaining (will hit 0 sooner)
-        if (remainingKm <= remainingDays) {
-          limitingFactor = 'km';
-          primaryRemaining = remainingKm;
-          primaryDue = dueMileageKm!;
-          primaryKind = 'km';
-          secondaryRemaining = remainingDays;
-          secondaryDue = dueDate.getTime();
-          secondaryKind = 'time';
-        } else {
-          limitingFactor = 'time';
-          primaryRemaining = remainingDays;
-          primaryDue = dueDate.getTime();
-          primaryKind = 'time';
-          secondaryRemaining = remainingKm;
-          secondaryDue = dueMileageKm!;
-          secondaryKind = 'km';
-        }
+        // Neither due date available (no time due date and no km due date) => unknown
+        return {
+          status: 'UNKNOWN',
+          limitingFactor: 'none',
+          primary: {
+            kind: 'time',
+            remainingValue: 0,
+            dueValue: 0,
+            unit: 'дней',
+            label: 'По времени',
+          },
+          why: 'Недостаточно данных для прогноза',
+          remainingKm: kmLeft,
+          remainingDays: null,
+        };
       }
-    } else if (remainingKm !== null) {
-      // Only km available (calendar mode with interval_km but no interval_days - shouldn't happen but safe)
-      limitingFactor = 'km';
-      primaryRemaining = remainingKm;
-      primaryDue = dueMileageKm!;
-      primaryKind = 'km';
-    } else if (remainingDays !== null && dueDate !== null) {
-      // Only time available (calendar mode with interval_days)
-      limitingFactor = 'time';
-      primaryRemaining = remainingDays;
-      primaryDue = dueDate.getTime();
-      primaryKind = 'time';
-    } else {
-      // Neither available (should have been caught above, but safety check)
+    } else if (hasTimeCriterion) {
+      // Time-only
+      if (dueByTimeDate === null || daysLeftTime === null) {
       return {
         status: 'UNKNOWN',
         limitingFactor: 'none',
@@ -317,30 +294,72 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
           unit: 'дней',
           label: 'По времени',
         },
-        why: 'Нет данных для расчёта по календарю',
-        remainingKm: remainingKm,
+          why: 'Недостаточно данных для расчёта по времени',
+          remainingKm: kmLeft,
+          remainingDays: null,
+        };
+      }
+      limitingFactor = 'time';
+      primaryKind = 'time';
+      primaryRemaining = daysLeftTime;
+      primaryDue = dueByTimeDate.getTime();
+    } else {
+      // Km-only (calendar mode with interval_km but no interval_days)
+      if (kmLeft === null || nextServiceKm === null) {
+        return {
+          status: 'UNKNOWN',
+          limitingFactor: 'none',
+          primary: {
+            kind: 'km',
+            remainingValue: 0,
+            dueValue: 0,
+            unit: 'км',
+            label: 'По пробегу',
+          },
+          why: latestOdometerMileageKm === null ? 'Нет данных о текущем пробеге' : 'Нет данных для расчёта по пробегу',
+          remainingKm: null,
         remainingDays: null,
       };
+      }
+      limitingFactor = 'km';
+      primaryKind = 'km';
+      primaryRemaining = kmLeft;
+      primaryDue = nextServiceKm;
+      if (daysLeftKm !== null) {
+        secondaryKind = 'time';
+        secondaryRemaining = daysLeftKm;
+        secondaryDue = dueByKmDate ? dueByKmDate.getTime() : null;
+      }
     }
   }
 
   // Determine status based on ANY available criterion (not just limiting factor)
-  // OVERDUE: if ANY remaining value <= 0
+  // TO-BE: OVERDUE rules:
+  // - km criterion: overdue if kmLeft <= 0
+  // - time criterion: overdue if dueDate < today (i.e., daysLeftTime < 0)
   // SOON: if NOT OVERDUE and ANY remaining value <= its threshold
   // OK: otherwise
   
-  // Check for OVERDUE: any criterion is overdue
-  const isOverdueByKm = remainingKm !== null && remainingKm <= 0;
-  const isOverdueByDays = remainingDays !== null && remainingDays <= 0;
+  const isOverdueByKm = kmLeft !== null && kmLeft <= 0;
+  const isOverdueByTime = daysLeftTime !== null && daysLeftTime < 0;
   
-  // Check for SOON: based ONLY on notify_before_days (notify_before_km removed from logic)
-  // SOON: if NOT OVERDUE and remainingDays <= notify_before_days
-  const isSoonByDays = remainingDays !== null && remainingDays <= serviceItem.notify_before_days && !isOverdueByDays;
+  // TO-BE: SOON is days-threshold based (notify_before_days) for both km and time,
+  // but only when the corresponding daysLeft is available (km days can be null on insufficient dailyRate).
+  const isSoonByKmDays =
+    daysLeftKm !== null &&
+    daysLeftKm >= 0 &&
+    daysLeftKm <= serviceItem.notify_before_days &&
+    !isOverdueByKm;
+  const isSoonByTimeDays =
+    daysLeftTime !== null &&
+    daysLeftTime >= 0 &&
+    daysLeftTime <= serviceItem.notify_before_days &&
+    !isOverdueByTime;
   
   let status: Status;
-  if (isOverdueByKm || isOverdueByDays) {
+  if (isOverdueByKm || isOverdueByTime) {
     status = 'OVERDUE';
-  } else if (isSoonByDays) {
+  } else if (isSoonByKmDays || isSoonByTimeDays) {
     status = 'SOON';
   } else {
     status = 'OK';
@@ -350,43 +369,42 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
   let why: string;
   if (status === 'OVERDUE') {
     if (serviceItem.measurement_mode === 'km') {
-      if (remainingKm !== null && remainingKm <= 0) {
-        why = `Просрочено по пробегу: ${remainingKm.toFixed(0)} км`;
-      } else if (remainingDays !== null && remainingDays <= 0) {
-        why = `Просрочено по прогнозу дней: ${remainingDays.toFixed(0)} дней`;
+      if (kmLeft !== null && kmLeft <= 0) {
+        why = `Просрочено по пробегу: ${kmLeft.toFixed(0)} км`;
       } else {
         why = 'Просрочено';
       }
     } else {
       // calendar mode
-      why = `Просрочено по календарю: ${remainingDays !== null ? remainingDays.toFixed(0) : '?'} дней`;
+      why = `Просрочено по календарю: ${daysLeftTime !== null ? daysLeftTime.toFixed(0) : '?'} дней`;
     }
   } else if (status === 'SOON') {
     if (serviceItem.measurement_mode === 'km') {
-      // For km-mode: SOON is based on forecast days threshold only
-      if (remainingDays !== null) {
-        why = `Скоро по прогнозу: осталось ${remainingDays.toFixed(0)} дн (порог: ${serviceItem.notify_before_days} дн)`;
+      if (daysLeftKm !== null) {
+        why = `Скоро по прогнозу: осталось ${daysLeftKm.toFixed(0)} дн (порог: ${serviceItem.notify_before_days} дн)`;
       } else {
-        why = 'Скоро';
+        why = 'Недостаточно данных для прогноза';
       }
     } else {
       // calendar mode
-      why = `Скоро по календарю: ${remainingDays !== null ? remainingDays.toFixed(0) : '?'} дней (порог: ${serviceItem.notify_before_days} дней)`;
+      why = `Скоро по календарю: ${daysLeftTime !== null ? daysLeftTime.toFixed(0) : '?'} дней (порог: ${serviceItem.notify_before_days} дней)`;
     }
   } else {
     // OK status
     if (serviceItem.measurement_mode === 'km') {
       const okParts: string[] = [];
-      if (remainingKm !== null) {
-        okParts.push(`${remainingKm.toFixed(0)} км`);
+      if (kmLeft !== null) {
+        okParts.push(`${kmLeft.toFixed(0)} км`);
       }
-      if (remainingDays !== null) {
-        okParts.push(`~${remainingDays.toFixed(0)} дн.`);
+      if (daysLeftKm !== null) {
+        okParts.push(`~${daysLeftKm.toFixed(0)} дн.`);
+      } else if (dailyKmRate === null) {
+        okParts.push('недостаточно данных');
       }
       why = okParts.length > 0 ? `Осталось ${okParts.join(' / ')}` : 'OK';
     } else {
       // calendar mode
-      why = `Осталось ${remainingDays !== null ? remainingDays.toFixed(0) : '?'} дней`;
+      why = `Осталось ${daysLeftTime !== null ? daysLeftTime.toFixed(0) : '?'} дней`;
     }
   }
 
@@ -402,15 +420,25 @@ export function calcServiceStatus(input: CalcInput): ServiceStatusResult {
       label: primaryKind === 'km' ? 'По пробегу' : 'По времени',
     },
     why,
-    remainingKm,
-    remainingDays,
+    remainingKm: kmLeft,
+    // TO-BE: remainingDays is the currently displayed days-left value:
+    // - for km-mode: daysLeftKm (nullable if insufficient dailyRate)
+    // - for time-mode: daysLeftTime
+    // - for mixed: days-left for the limiting factor
+    remainingDays:
+      limitingFactor === 'time'
+        ? daysLeftTime
+        : limitingFactor === 'km'
+          ? daysLeftKm
+          : null,
   };
   
   // Add predictedDaysFromKm and dailyKmRateUsed for km mode (for debugging)
   if (serviceItem.measurement_mode === 'km') {
-    result.predictedDaysFromKm = predictedDaysFromKm;
-    // Store the rate actually used (with fallback to 30)
-    result.dailyKmRateUsed = (dailyKmRate !== null && dailyKmRate > 0) ? dailyKmRate : 30;
+    // TO-BE: predictedDaysFromKm equals daysLeftKm (integer, ceil), or null if insufficient data.
+    result.predictedDaysFromKm = daysLeftKm;
+    // TO-BE: store the rate actually used (no implicit fallback in forecast; null means insufficient)
+    result.dailyKmRateUsed = dailyKmRate;
   }
 
   // Add secondary if available

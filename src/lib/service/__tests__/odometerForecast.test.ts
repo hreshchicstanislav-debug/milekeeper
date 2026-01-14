@@ -24,11 +24,14 @@ describe('odometerForecast', () => {
       // Reverse to get newest first (as expected by the function)
       entries.reverse();
       
-      // When: estimate daily rate
-      const result = estimateDailyKmRate(entries);
+      // When: estimate daily rate (anchorNow must be >= latest entry to avoid future-entry exclusion)
+      const anchorNow = new Date(baseDate);
+      anchorNow.setDate(anchorNow.getDate() + 10);
+      const result = estimateDailyKmRate(entries, { anchorNow });
       
-      // Then: should be close to 50 km/day, not fallback
-      expect(result.dailyKmRate).toBeCloseTo(50, 1);
+      // Then (TO-BE): avgKmPerDay = (end-start) / daysSpanInclusive
+      // start=150000, end=150500, daysSpan=11 => 500/11
+      expect(result.dailyKmRate).toBeCloseTo(500 / 11, 6);
       expect(result.isFallback).toBe(false);
     });
 
@@ -37,11 +40,11 @@ describe('odometerForecast', () => {
       const entries: OdometerEntry[] = [];
       
       // When: estimate daily rate
-      const result = estimateDailyKmRate(entries);
+      const result = estimateDailyKmRate(entries, { anchorNow: new Date('2026-01-01T00:00:00Z') });
       
-      // Then: should use fallback (30 km/day by default)
-      expect(result.dailyKmRate).toBe(30);
-      expect(result.isFallback).toBe(true);
+      // Then (TO-BE): insufficient data => null (no numeric fallback)
+      expect(result.dailyKmRate).toBeNull();
+      expect(result.isFallback).toBe(false);
     });
 
     it('should use fallback when insufficient data (1 entry)', () => {
@@ -55,52 +58,46 @@ describe('odometerForecast', () => {
       }];
       
       // When: estimate daily rate
-      const result = estimateDailyKmRate(entries);
+      const result = estimateDailyKmRate(entries, { anchorNow: new Date('2026-01-01T00:00:00Z') });
       
-      // Then: should use fallback
-      expect(result.dailyKmRate).toBe(30);
-      expect(result.isFallback).toBe(true);
+      // Then (TO-BE): insufficient data => null
+      expect(result.dailyKmRate).toBeNull();
+      expect(result.isFallback).toBe(false);
     });
 
-    it('should use fallback when entries are too old (>14 days)', () => {
-      // Given: entries older than 14 days
-      const baseDate = new Date('2026-01-01T00:00:00Z');
+    it('should use rolling 60 days window (entries within 60 days are used)', () => {
+      const anchorNow = new Date('2026-01-21T00:00:00Z');
       const entries: OdometerEntry[] = [
         {
           id: 'entry-old',
-          occurred_at: new Date(baseDate.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+          occurred_at: new Date(anchorNow.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
           mileage_km: 150000,
           note: null,
-          created_at: new Date(baseDate.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+          created_at: new Date(anchorNow.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
         },
         {
           id: 'entry-new',
-          occurred_at: baseDate.toISOString(),
+          occurred_at: anchorNow.toISOString(),
           mileage_km: 151000,
           note: null,
-          created_at: baseDate.toISOString(),
+          created_at: anchorNow.toISOString(),
         },
       ];
       entries.reverse();
       
       // When: estimate daily rate
-      const result = estimateDailyKmRate(entries);
+      const result = estimateDailyKmRate(entries, { anchorNow });
       
-      // Then: should use fallback (window too large)
-      expect(result.dailyKmRate).toBe(30);
-      expect(result.isFallback).toBe(true);
+      // Then (TO-BE): both days are within rolling 60 days => computed
+      // 20 days difference => daysSpan=21 inclusive; totalKm=1000
+      expect(result.dailyKmRate).toBeCloseTo(1000 / 21, 6);
+      expect(result.isFallback).toBe(false);
     });
 
-    it('should use custom fallback when provided', () => {
-      // Given: no entries with custom fallback
+    it('should return null when anchorNow is missing (TO-BE requires single now source)', () => {
       const entries: OdometerEntry[] = [];
-      
-      // When: estimate with custom fallback
-      const result = estimateDailyKmRate(entries, { fallbackDailyKm: 50 });
-      
-      // Then: should use custom fallback
-      expect(result.dailyKmRate).toBe(50);
-      expect(result.isFallback).toBe(true);
+      const result = estimateDailyKmRate(entries);
+      expect(result.dailyKmRate).toBeNull();
     });
   });
 

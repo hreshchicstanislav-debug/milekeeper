@@ -27,7 +27,13 @@ let cookieBridge: typeof import('./appCookieBridge') | null = null;
 function getCookieBridge() {
   if (!cookieBridge) {
     // Lazy load cookie bridge (works on both server and client)
-    cookieBridge = require('./appCookieBridge');
+    try {
+      cookieBridge = require('./appCookieBridge');
+    } catch {
+      // In non-Next runtimes (e.g., unit tests), the cookie bridge may not be resolvable.
+      // Treat as unavailable; server-side will fall back to defaults.
+      cookieBridge = null;
+    }
   }
   return cookieBridge;
 }

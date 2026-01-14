@@ -1,7 +1,7 @@
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
-import { estimateDailyKmRateUnified } from '@/lib/service/odometerForecast';
+import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
 import { getAppNow } from '@/lib/appNow';
@@ -47,12 +47,10 @@ export default async function ItemsPage() {
   // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
   const appNow = getAppNow();
   
-  // Compute forecast daily km rate for km-mode items
-  // Returns EstimateResult with dailyKmRate (always > 0) and isFallback flag
-  // Uses unified function that requires anchorNow (AppNow) and excludes future entries
-  const forecastResult = estimateDailyKmRateUnified(odometerEntries, appNow);
-  const forecastDailyKmRate = forecastResult.dailyKmRate; // Always > 0 (fallback if needed)
-  const isFallbackRate = forecastResult.isFallback; // True if using fallback (30 km/day)
+  // TO-BE: Compute daily mileage rate (rolling 60 days + fallback 14 active days)
+  const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
+  const forecastDailyKmRate = dailyRateResult.dailyRate; // number | null
+  const isFallbackRate = dailyRateResult.isFallback;
 
   const itemsWithStatus = items.map((item) => {
     const lastEvent = lastEventsMap[item.id] || null;

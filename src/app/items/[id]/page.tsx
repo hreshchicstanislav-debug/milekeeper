@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
-import { estimateDailyKmRate } from '@/lib/service/odometerForecast';
+import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
-import { headers } from 'next/headers';
+import { getAppNow } from '@/lib/appNow';
 
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
@@ -36,9 +36,10 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
   const lastEventsMap = await listLastServiceEventsForItems([item.id]);
   const lastEvent = lastEventsMap[item.id] || null;
   
-  // Compute forecast daily km rate
-  const forecastResult = estimateDailyKmRate(odometerEntries);
-  const forecastDailyKmRate = forecastResult.dailyKmRate;
+  // TO-BE: single canonical now + TO-BE daily mileage rate
+  const appNow = getAppNow();
+  const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
+  const forecastDailyKmRate = dailyRateResult.dailyRate; // number | null
   
   // Validate tab param
   const activeTab = tab === 'calc' ? 'calc' : 'history';

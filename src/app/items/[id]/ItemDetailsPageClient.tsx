@@ -10,6 +10,7 @@ import MarkReplacementButton from '@/app/components/MarkReplacementButton';
 import AddServiceItemForm from '@/app/components/AddServiceItemForm';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { logMileageComparison } from '@/lib/dev/mileageDiagnostics';
+import { getAppNow } from '@/lib/appNow';
 
 interface ItemDetailsPageClientProps {
   item: ServiceItem;
@@ -189,6 +190,7 @@ export default function ItemDetailsPageClient({
     latestOdometerMileageKm: currentMileage,
     lastEvent,
     dailyKmRate,
+    now: getAppNow(),
   });
 
   return (

@@ -100,15 +100,15 @@ describe('soonMaintenance', () => {
       expect(shouldShowSoonMaintenanceBlock(items)).toBe(false);
     });
 
-    it('should return true for mileage mode item with km <= X_km', () => {
+    it('should return true for mileage mode item with days <= threshold (km is not used)', () => {
       const items: SoonMaintenanceItemInput[] = [
         {
           id: '1',
           title: 'Item 1',
           mode: 'km',
           status: 'SOON',
-          remainingKm: 1000, // <= 1200 (X_km)
-          remainingDays: 20,
+          remainingKm: 1000,
+          remainingDays: 3, // <= 5 (Y_days default)
           isOverdue: false,
         },
       ];
@@ -312,6 +312,7 @@ describe('soonMaintenance', () => {
           remainingKm: 1000,
           remainingDays: 5,
           isOverdue: false,
+          notifyBeforeDays: 14,
         },
         {
           id: '2',
@@ -321,6 +322,7 @@ describe('soonMaintenance', () => {
           remainingKm: 1000,
           remainingDays: 2,
           isOverdue: false,
+          notifyBeforeDays: 14,
         },
         {
           id: '3',
@@ -330,6 +332,7 @@ describe('soonMaintenance', () => {
           remainingKm: 1000,
           remainingDays: 10,
           isOverdue: false,
+          notifyBeforeDays: 14,
         },
       ];
 
@@ -368,7 +371,7 @@ describe('soonMaintenance', () => {
       expect(result[1].id).toBe('1'); // 1000 km second
     });
 
-    it('should handle missing remainingDays for mileage mode (treat as Infinity)', () => {
+    it('should exclude mileage-mode items with missing remainingDays (insufficient data)', () => {
       const items: SoonMaintenanceItemInput[] = [
         {
           id: '1',
@@ -392,8 +395,7 @@ describe('soonMaintenance', () => {
 
       const result = pickSoonMaintenanceItems(items);
 
-      expect(result[0].id).toBe('1'); // Item with days comes first
-      expect(result[1].id).toBe('2'); // Item without days comes second
+      expect(result.map(r => r.id)).toEqual(['1']);
     });
   });
 
