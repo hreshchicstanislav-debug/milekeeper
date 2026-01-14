@@ -2,12 +2,11 @@
 
 /**
  * Server-side actions for odometer entries
- * Uses admin client - server-only, never import in client components
+ * Uses user-scoped client (RLS)
  */
 
-import { unstable_cache } from 'next/cache';
 import { revalidateTag, revalidatePath } from 'next/cache';
-import { createAdminClient } from '../supabase/adminClient';
+import { getRlsClientAndUserId } from '../supabase/rlsServerClient';
 import { TAGS } from '../cache/tags';
 import type { OdometerEntry, OdometerEntryInput } from '../db/types';
 import { logMileageQuery } from '../dev/mileageDiagnostics';
@@ -18,11 +17,12 @@ import { logMileageQuery } from '../dev/mileageDiagnostics';
  * @returns Array of odometer entries
  */
 async function _listOdometerEntries(limit?: number): Promise<OdometerEntry[]> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   let query = supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('occurred_at', { ascending: false });
   
   if (limit !== undefined) {
@@ -39,15 +39,8 @@ async function _listOdometerEntries(limit?: number): Promise<OdometerEntry[]> {
 }
 
 export async function listOdometerEntries(limit?: number): Promise<OdometerEntry[]> {
-  const cacheKey = limit !== undefined ? `odometerEntries:${limit}` : 'odometerEntries:all';
-  const result = await unstable_cache(
-    () => _listOdometerEntries(limit),
-    [cacheKey],
-    {
-      tags: [TAGS.odometerEntries],
-    }
-  )();
-  return result;
+  // IMPORTANT: This function fetches via RLS client (cookies) and must NOT be wrapped in unstable_cache.
+  return await _listOdometerEntries(limit);
 }
 
 /**
@@ -55,12 +48,13 @@ export async function listOdometerEntries(limit?: number): Promise<OdometerEntry
  * @returns Latest odometer entry or null if none exist
  */
 async function _getLatestOdometerEntry(): Promise<OdometerEntry | null> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // First try by occurred_at desc, then mileage_km desc as tie-breaker
   const { data, error } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('occurred_at', { ascending: false })
     .order('mileage_km', { ascending: false })
     .limit(1)
@@ -77,19 +71,9 @@ async function _getLatestOdometerEntry(): Promise<OdometerEntry | null> {
   return data;
 }
 
-const _getLatestOdometerEntryCached = unstable_cache(
-  _getLatestOdometerEntry,
-  ['odometer'],
-  {
-    tags: [TAGS.odometer],
-  }
-);
-
 export async function getLatestOdometerEntry(screenName?: string): Promise<OdometerEntry | null> {
-  // In dev mode, bypass cache to ensure fresh data
-  const result = process.env.NODE_ENV !== 'production'
-    ? await _getLatestOdometerEntry()
-    : await _getLatestOdometerEntryCached();
+  // IMPORTANT: This function fetches via RLS client (cookies) and must NOT be wrapped in unstable_cache.
+  const result = await _getLatestOdometerEntry();
   
   // Diagnostic logging (only in dev/preview or when NEXT_PUBLIC_DIAGNOSTICS=1)
   if (screenName) {
@@ -115,11 +99,12 @@ export async function getLatestOdometerEntry(screenName?: string): Promise<Odome
  * @returns Entry with maximum mileage or null if none exist
  */
 async function _getMaxMileageEntry(): Promise<OdometerEntry | null> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   const { data, error } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('mileage_km', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -133,14 +118,6 @@ async function _getMaxMileageEntry(): Promise<OdometerEntry | null> {
   
   return data;
 }
-
-const _getMaxMileageEntryCached = unstable_cache(
-  _getMaxMileageEntry,
-  ['odometer-max'],
-  {
-    tags: [TAGS.odometer],
-  }
-);
 
 export async function getMaxMileageEntry(screenName?: string): Promise<OdometerEntry | null> {
   // Always bypass cache to ensure fresh data
@@ -175,7 +152,7 @@ export async function getMaxMileageEntry(screenName?: string): Promise<OdometerE
 export async function addOdometerEntry(
   input: OdometerEntryInput
 ): Promise<OdometerEntry> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // Fetch the maximum mileage from database to validate monotonicity
   // This matches what the database trigger uses (MAX(mileage_km))
@@ -183,6 +160,7 @@ export async function addOdometerEntry(
   const { data: maxMileageData, error: maxMileageError } = await supabase
     .from('odometer_entries')
     .select('mileage_km')
+    .eq('user_id', userId)
     .order('mileage_km', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -204,6 +182,7 @@ export async function addOdometerEntry(
   const { data, error } = await supabase
     .from('odometer_entries')
     .insert({
+      user_id: userId,
       occurred_at: input.occurredAt.toISOString(),
       mileage_km: input.mileageKm,
       note: input.note || null,
@@ -240,7 +219,7 @@ export async function addOdometerEntry(
  * @throws Error if no entries exist or deletion fails
  */
 export async function deleteLatestOdometerEntry(): Promise<string> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // Fetch the latest entry
   const latest = await getLatestOdometerEntry('DeleteLatestOdometerEntry');
@@ -253,7 +232,8 @@ export async function deleteLatestOdometerEntry(): Promise<string> {
   const { error } = await supabase
     .from('odometer_entries')
     .delete()
-    .eq('id', latest.id);
+    .eq('id', latest.id)
+    .eq('user_id', userId);
   
   if (error) {
     throw new Error(`Failed to delete odometer entry: ${error.message}`);
@@ -284,7 +264,7 @@ export async function deleteLatestOdometerEntry(): Promise<string> {
 export async function updateLatestOdometerEntry(
   input: { mileageKm: number; occurredAt: Date; note?: string | null }
 ): Promise<OdometerEntry> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // Fetch the latest entry
   const latest = await getLatestOdometerEntry('UpdateLatestOdometerEntry');
@@ -298,6 +278,7 @@ export async function updateLatestOdometerEntry(
   const { data: topEntries, error: fetchError } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('occurred_at', { ascending: false })
     .order('mileage_km', { ascending: false })
     .limit(2);
@@ -330,6 +311,7 @@ export async function updateLatestOdometerEntry(
       note: input.note || null,
     })
     .eq('id', latest.id)
+    .eq('user_id', userId)
     .select()
     .single();
   

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/adminClient';
+import { getRlsClientAndUserId } from '@/lib/supabase/rlsServerClient';
 import type { ServiceEvent } from '@/lib/db/types';
 
 /**
@@ -34,11 +34,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch service events
-    const supabase = createAdminClient();
+    const { supabase, userId } = await getRlsClientAndUserId();
     const { data, error } = await supabase
       .from('service_events')
       .select('*')
       .eq('service_item_id', itemId)
+      .eq('user_id', userId)
       .order('occurred_at', { ascending: false })
       .order('mileage_km', { ascending: false })
       .limit(limit);

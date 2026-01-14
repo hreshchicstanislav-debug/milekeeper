@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Public routes (MVP)
+  const isPublic =
+    pathname === '/login' ||
+    pathname === '/auth/callback' ||
+    pathname.startsWith('/_next/') ||
+    pathname === '/favicon.ico';
+
+  if (!isPublic) {
+    const hasAccessToken = !!request.cookies.get('mk_sb_at')?.value;
+    if (!hasAccessToken) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+  }
+
   const response = NextResponse.next();
   
   // Disable caching for all pages to ensure fresh data on Vercel

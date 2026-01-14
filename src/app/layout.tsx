@@ -3,6 +3,7 @@ import './globals.css';
 import BottomNav from './components/BottomNav';
 import { ToastProvider } from './components/ToastProvider';
 import ScrollLockRouteGuard from './components/ScrollLockRouteGuard';
+import AuthGate from './components/AuthGate';
 import { RU } from '@/lib/copy/ru';
 export const metadata: Metadata = {
   title: RU.metadata.title,
@@ -23,6 +24,7 @@ export default function RootLayout({
     <html lang="ru">
       <body>
         <ToastProvider>
+          <AuthGate />
           <ScrollLockRouteGuard />
           <div className="app-container">
             <main className="app-main">{children}</main>

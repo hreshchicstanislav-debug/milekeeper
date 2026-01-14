@@ -2,12 +2,11 @@
 
 /**
  * Server-side actions for service items and service events
- * Uses admin client - server-only, never import in client components
+ * Uses user-scoped client (RLS)
  */
 
-import { unstable_cache } from 'next/cache';
 import { revalidateTag, revalidatePath } from 'next/cache';
-import { createAdminClient } from '../supabase/adminClient';
+import { getRlsClientAndUserId } from '../supabase/rlsServerClient';
 import { getMaxMileageEntry } from './odometerActions';
 import { TAGS } from '../cache/tags';
 import type {
@@ -22,12 +21,13 @@ import type {
  * List active service items, ordered by title ascending
  * @returns Array of active service items
  */
-async function _listServiceItems(): Promise<ServiceItem[]> {
-  const supabase = createAdminClient();
+async function fetchServiceItemsForCurrentUser(): Promise<{ userId: string; items: ServiceItem[] }> {
+  const { supabase, userId } = await getRlsClientAndUserId(); // dynamic (reads cookies inside)
   
   const { data, error } = await supabase
     .from('service_items')
     .select('*')
+    .eq('user_id', userId)
     .eq('is_active', true)
     .order('title', { ascending: true });
   
@@ -35,16 +35,19 @@ async function _listServiceItems(): Promise<ServiceItem[]> {
     throw new Error(`Failed to list service items: ${error.message}`);
   }
   
-  return data || [];
+  return { userId, items: data || [] };
 }
 
-export const listServiceItems = unstable_cache(
-  _listServiceItems,
-  ['serviceItems'],
-  {
-    tags: [TAGS.serviceItems],
-  }
-);
+function computeServiceItems(items: ServiceItem[]): ServiceItem[] {
+  // Pure post-processing (currently identity; ordering is handled by SQL query)
+  return items;
+}
+
+export async function listServiceItems(): Promise<ServiceItem[]> {
+  // Fetch is dynamic (RLS cookies) -> must NOT be inside unstable_cache()
+  const { items } = await fetchServiceItemsForCurrentUser();
+  return computeServiceItems(items);
+}
 
 /**
  * Create a new service item
@@ -90,11 +93,12 @@ export async function createServiceItem(
     }
   }
   
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   const { data, error } = await supabase
     .from('service_items')
     .insert({
+      user_id: userId,
       title: input.title,
       interval_km: input.intervalKm ?? null,
       interval_days: input.intervalDays ?? null,
@@ -147,7 +151,7 @@ export async function updateServiceItem(
   id: string,
   patch: ServiceItemUpdate
 ): Promise<ServiceItem> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // Validate title if provided
   if (patch.title !== undefined) {
@@ -162,6 +166,7 @@ export async function updateServiceItem(
     .from('service_items')
     .select('*')
     .eq('id', id)
+    .eq('user_id', userId)
     .single();
   
   if (fetchError) {
@@ -243,6 +248,7 @@ export async function updateServiceItem(
     .from('service_items')
     .update(updateData)
     .eq('id', id)
+    .eq('user_id', userId)
     .select()
     .single();
   
@@ -282,13 +288,14 @@ export async function updateServiceItem(
  * @throws Error if deletion fails
  */
 export async function deleteServiceItem(id: string): Promise<{ success: boolean }> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
 
   // First, delete all service events for this item (for safety, even if FK cascade is set)
   const { error: eventsError } = await supabase
     .from('service_events')
     .delete()
-    .eq('service_item_id', id);
+    .eq('service_item_id', id)
+    .eq('user_id', userId);
 
   if (eventsError) {
     throw new Error(`Не удалось удалить события обслуживания: ${eventsError.message}`);
@@ -298,7 +305,8 @@ export async function deleteServiceItem(id: string): Promise<{ success: boolean 
   const { error: itemError } = await supabase
     .from('service_items')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', userId);
 
   if (itemError) {
     throw new Error(`Не удалось удалить элемент обслуживания: ${itemError.message}`);
@@ -339,7 +347,7 @@ export async function addServiceEvent(
     throw new Error('Mileage required');
   }
   
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   // Fetch max mileage entry to validate mileage (matches what's shown on home page)
   const maxMileageEntry = await getMaxMileageEntry('AddServiceEvent');
@@ -360,6 +368,7 @@ export async function addServiceEvent(
   const { data, error } = await supabase
     .from('service_events')
     .insert({
+      user_id: userId,
       service_item_id: input.serviceItemId,
       occurred_at: input.occurredAt.toISOString(),
       mileage_km: input.mileageKm,
@@ -402,12 +411,13 @@ export async function addServiceEvent(
 export async function listServiceEventsByItem(
   serviceItemId: string
 ): Promise<ServiceEvent[]> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
   
   const { data, error } = await supabase
     .from('service_events')
     .select('*')
     .eq('service_item_id', serviceItemId)
+    .eq('user_id', userId)
     .order('occurred_at', { ascending: false });
   
   if (error) {
@@ -442,71 +452,23 @@ async function _listLastServiceEventsForItems(
     return {};
   }
 
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
 
-  // Use RPC to execute a SQL query with DISTINCT ON
-  // This is more efficient than fetching all events and sorting in JS
-  const { data: latestEvents, error } = await supabase.rpc('get_last_service_events_for_items', {
-    item_ids: itemIds,
-  });
+  // User-scoped query under RLS (avoid RPC until it's updated for user_id)
+  const { data: allEvents, error: fetchError } = await supabase
+    .from('service_events')
+    .select('*')
+    .eq('user_id', userId)
+    .in('service_item_id', itemIds)
+    .order('service_item_id', { ascending: true })
+    .order('occurred_at', { ascending: false })
+    .order('mileage_km', { ascending: false });
 
-  if (error) {
-    // Fallback to optimized query if RPC doesn't exist (for backwards compatibility)
-    // This should not happen in production, but provides safety during migration
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('RPC function get_last_service_events_for_items not found, using fallback:', error.message);
-    }
-    
-    // Fallback: fetch with SQL-side sorting, then take first event per item in one pass
-    // This is more efficient than the old JS grouping/sorting approach
-    const { data: allEvents, error: fetchError } = await supabase
-      .from('service_events')
-      .select('*')
-      .in('service_item_id', itemIds)
-      .order('service_item_id', { ascending: true })
-      .order('occurred_at', { ascending: false })
-      .order('mileage_km', { ascending: false });
-
-    if (fetchError) {
-      throw new Error(`Failed to list service events: ${fetchError.message}`);
-    }
-
-    // Build result map - take first event for each service_item_id (already sorted by DB)
-    // Single pass through events, no JS sorting needed
-    const result: Record<string, ServiceEvent | null> = {};
-    for (const itemId of itemIds) {
-      result[itemId] = null;
-    }
-
-    const seenItems = new Set<string>();
-    for (const event of allEvents || []) {
-      if (!seenItems.has(event.service_item_id)) {
-        result[event.service_item_id] = event;
-        seenItems.add(event.service_item_id);
-      }
-    }
-
-    return result;
+  if (fetchError) {
+    throw new Error(`Failed to list service events: ${fetchError.message}`);
   }
 
-  // Build result map from RPC response
-  const result: Record<string, ServiceEvent | null> = {};
-  
-  // Initialize all items to null
-  for (const itemId of itemIds) {
-    result[itemId] = null;
-  }
-
-  // Fill in returned events
-  if (latestEvents && Array.isArray(latestEvents)) {
-    for (const event of latestEvents) {
-      if (event && event.service_item_id) {
-        result[event.service_item_id] = event as ServiceEvent;
-      }
-    }
-  }
-
-  return result;
+  return computeLastServiceEventsMap(itemIds, allEvents || []);
 }
 
 export async function listLastServiceEventsForItems(
@@ -515,16 +477,30 @@ export async function listLastServiceEventsForItems(
   if (itemIds.length === 0) {
     return {};
   }
-  
-  // Sort itemIds to ensure consistent cache key
-  const sortedIds = [...itemIds].sort().join(',');
-  return unstable_cache(
-    () => _listLastServiceEventsForItems(itemIds),
-    [`serviceEvents:lastForItems:${sortedIds}`],
-    {
-      tags: [TAGS.serviceEvents],
+
+  // Fetch is dynamic (RLS cookies) -> must NOT be inside unstable_cache()
+  return await _listLastServiceEventsForItems(itemIds);
+}
+
+function computeLastServiceEventsMap(
+  itemIds: string[],
+  allEvents: ServiceEvent[]
+): Record<string, ServiceEvent | null> {
+  // Pure post-processing: take first event per service_item_id from DB-sorted list
+  const result: Record<string, ServiceEvent | null> = {};
+  for (const itemId of itemIds) {
+    result[itemId] = null;
+  }
+
+  const seenItems = new Set<string>();
+  for (const event of allEvents) {
+    if (!seenItems.has(event.service_item_id)) {
+      result[event.service_item_id] = event;
+      seenItems.add(event.service_item_id);
     }
-  )();
+  }
+
+  return result;
 }
 
 

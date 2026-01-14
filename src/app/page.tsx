@@ -467,6 +467,21 @@ export default async function Home() {
           )}
         </div>
 
+        {/* TO-BE: Daily mileage rate hint (independent of Soon Maintenance block visibility) */}
+        <div className="prediction-hint" style={{ marginTop: 'var(--sp-3, 0.75rem)' }}>
+          <p className="prediction-hint-text">
+            {dailyRate !== null && dailyRate > 0 ? (
+              isFallbackRate ? (
+                <>Средний пробег: ~{formatNumber(Math.round(dailyRate))} {RU.common.km}/день</>
+              ) : (
+                <>Средний пробег за последние 60 дней: ~{formatNumber(Math.round(dailyRate))} {RU.common.km}/день</>
+              )
+            ) : (
+              <>Средний пробег: недостаточно данных</>
+            )}
+          </p>
+        </div>
+
         <div className="add-mileage-section">
           <AddMileageForm />
         </div>

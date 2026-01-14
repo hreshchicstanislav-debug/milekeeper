@@ -2,11 +2,11 @@
 
 /**
  * Development-only server actions for seeding and testing MileKeeper data
- * Uses admin client - server-only, never import in client components
+ * Uses user-scoped client (RLS). Dev actions must never touch other users' data.
  */
 
 import { revalidateTag, revalidatePath } from 'next/cache';
-import { createAdminClient } from '../supabase/adminClient';
+import { getRlsClientAndUserId } from '../supabase/rlsServerClient';
 import { TAGS } from '../cache/tags';
 import type { OdometerEntry, ServiceItem, ServiceEvent } from '../db/types';
 
@@ -77,18 +77,20 @@ function findDateForMileage(entries: OdometerEntry[], targetMileage: number): Da
  * @throws Error if data already exists (unless skipExistenceCheck is true)
  */
 export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResult> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
 
   // Check if data already exists (unless skipExistenceCheck is true)
   if (!skipExistenceCheck) {
     const { data: existingEntries } = await supabase
       .from('odometer_entries')
       .select('id')
+      .eq('user_id', userId)
       .limit(1);
 
     const { data: existingItems } = await supabase
       .from('service_items')
       .select('id')
+      .eq('user_id', userId)
       .limit(1);
 
     if ((existingEntries && existingEntries.length > 0) || (existingItems && existingItems.length > 0)) {
@@ -98,13 +100,13 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
 
   // Insert service items with realistic intervals
   const serviceItemsData = [
-    { title: 'Масло двигателя', interval_km: 10000, interval_days: 180, notify_before_days: 14, notify_before_km: 1000, measurement_mode: 'km', note: null },
-    { title: 'Масляный фильтр', interval_km: 10000, interval_days: null, notify_before_days: 14, notify_before_km: 1000, measurement_mode: 'km', note: null },
-    { title: 'Воздушный фильтр', interval_km: 15000, interval_days: 365, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
-    { title: 'Салонный фильтр', interval_km: 12000, interval_days: 365, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
-    { title: 'Топливный фильтр', interval_km: 30000, interval_days: 730, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
-    { title: 'Тормозная жидкость', interval_km: null, interval_days: 730, notify_before_days: 30, notify_before_km: 1000, measurement_mode: 'calendar', note: null },
-    { title: 'Антифриз', interval_km: 60000, interval_days: 1460, notify_before_days: 60, notify_before_km: 2000, measurement_mode: 'calendar', note: null },
+    { user_id: userId, title: 'Масло двигателя', interval_km: 10000, interval_days: 180, notify_before_days: 14, notify_before_km: 1000, measurement_mode: 'km', note: null },
+    { user_id: userId, title: 'Масляный фильтр', interval_km: 10000, interval_days: null, notify_before_days: 14, notify_before_km: 1000, measurement_mode: 'km', note: null },
+    { user_id: userId, title: 'Воздушный фильтр', interval_km: 15000, interval_days: 365, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
+    { user_id: userId, title: 'Салонный фильтр', interval_km: 12000, interval_days: 365, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
+    { user_id: userId, title: 'Топливный фильтр', interval_km: 30000, interval_days: 730, notify_before_days: 30, notify_before_km: 1500, measurement_mode: 'km', note: null },
+    { user_id: userId, title: 'Тормозная жидкость', interval_km: null, interval_days: 730, notify_before_days: 30, notify_before_km: 1000, measurement_mode: 'calendar', note: null },
+    { user_id: userId, title: 'Антифриз', interval_km: 60000, interval_days: 1460, notify_before_days: 60, notify_before_km: 2000, measurement_mode: 'calendar', note: null },
   ];
 
   const { data: insertedItems, error: itemsError } = await supabase
@@ -127,7 +129,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
   const daysBack = 90;
   const numEntries = 25 + Math.floor(Math.random() * 11); // 25-35 entries
   
-  const entries: Array<{ occurred_at: string; mileage_km: number; note: string | null }> = [];
+  const entries: Array<{ user_id: string; occurred_at: string; mileage_km: number; note: string | null }> = [];
   
   let currentMileage = startMileage;
   const startDate = new Date(now);
@@ -157,6 +159,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
     }
     
     entries.push({
+      user_id: userId,
       occurred_at: entryDate.toISOString(),
       mileage_km: currentMileage,
       note: i === 0 ? 'Начальная запись' : null,
@@ -180,6 +183,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
   const { data: allOdometerEntries, error: entriesFetchError } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('mileage_km', { ascending: true })
     .order('occurred_at', { ascending: true });
 
@@ -193,6 +197,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
   // Insert initial service events for each item (baseline replacements)
   // Each item gets one service_event representing the last replacement
   const serviceEvents: Array<{
+    user_id: string;
     service_item_id: string;
     occurred_at: string;
     mileage_km: number;
@@ -243,6 +248,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
     }
 
     serviceEvents.push({
+      user_id: userId,
       service_item_id: item.id,
       occurred_at: lastDate.toISOString(),
       mileage_km: lastMileage,
@@ -304,13 +310,14 @@ export async function simulateTripRange(
   range: 'day' | 'week' | 'month',
   baseNowIso?: string
 ): Promise<SimulateTripResult> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
 
   // Get entry with maximum mileage_km (to satisfy monotonic constraints)
   // Order by mileage_km desc first, then occurred_at desc as tie-breaker
   const { data: maxMileageEntry, error: fetchError } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('mileage_km', { ascending: false })
     .order('occurred_at', { ascending: false })
     .limit(1)
@@ -372,6 +379,7 @@ export async function simulateTripRange(
   const { data: inserted, error: insertError } = await supabase
     .from('odometer_entries')
     .insert({
+      user_id: userId,
       occurred_at: nextDate.toISOString(),
       mileage_km: nextMileage,
       note: notePrefix,
@@ -414,6 +422,7 @@ export async function simulateTripRange(
   const { data: verifyEntry, error: verifyError } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .eq('id', inserted.id)
     .single();
 
@@ -421,6 +430,7 @@ export async function simulateTripRange(
   const { data: latestDirect, error: latestError } = await supabase
     .from('odometer_entries')
     .select('*')
+    .eq('user_id', userId)
     .order('occurred_at', { ascending: false })
     .order('mileage_km', { ascending: false })
     .limit(1)
@@ -467,14 +477,14 @@ export async function resetAndSeedDemoData(): Promise<SeedResult> {
  * Deletes in order: service_events, service_items, odometer_entries
  */
 export async function wipeAllData(): Promise<{ success: boolean }> {
-  const supabase = createAdminClient();
+  const { supabase, userId } = await getRlsClientAndUserId();
 
   // Delete in order to respect foreign key constraints
   // Use a condition that matches all rows (id is not null, which is always true for UUIDs)
   const { error: eventsError } = await supabase
     .from('service_events')
     .delete()
-    .not('id', 'is', null); // Delete all (id is never null for UUIDs)
+    .eq('user_id', userId);
 
   if (eventsError) {
     throw new Error(`Failed to delete service events: ${eventsError.message}`);
@@ -483,7 +493,7 @@ export async function wipeAllData(): Promise<{ success: boolean }> {
   const { error: itemsError } = await supabase
     .from('service_items')
     .delete()
-    .not('id', 'is', null); // Delete all
+    .eq('user_id', userId);
 
   if (itemsError) {
     throw new Error(`Failed to delete service items: ${itemsError.message}`);
@@ -492,7 +502,7 @@ export async function wipeAllData(): Promise<{ success: boolean }> {
   const { error: entriesError } = await supabase
     .from('odometer_entries')
     .delete()
-    .not('id', 'is', null); // Delete all
+    .eq('user_id', userId);
 
   if (entriesError) {
     throw new Error(`Failed to delete odometer entries: ${entriesError.message}`);

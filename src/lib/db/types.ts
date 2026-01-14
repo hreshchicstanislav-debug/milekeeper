@@ -6,6 +6,7 @@
 // Odometer Entry Types
 export interface OdometerEntry {
   id: string;
+  user_id: string;
   occurred_at: string; // ISO timestamp
   mileage_km: number;
   note: string | null;
@@ -21,6 +22,7 @@ export interface OdometerEntryInput {
 // Service Item Types
 export interface ServiceItem {
   id: string;
+  user_id: string;
   title: string;
   interval_km: number | null;
   interval_days: number | null;
@@ -56,6 +58,7 @@ export interface ServiceItemUpdate {
 // Service Event Types
 export interface ServiceEvent {
   id: string;
+  user_id: string;
   service_item_id: string;
   occurred_at: string; // ISO timestamp
   mileage_km: number;
