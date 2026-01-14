@@ -398,7 +398,7 @@ export default async function Home() {
           `remainingKm=${status.remainingKm?.toFixed(0) ?? 'null'} | ` +
           `remainingDays=${status.remainingDays?.toFixed(1) ?? 'null'} | ` +
           `notify=${item.notify_before_days} | ` +
-          `rate=${dailyKmRateUsed.toFixed(1)}${isFallback ? '(fallback)' : ''} | ` +
+          `rate=${dailyKmRateUsed !== null ? dailyKmRateUsed.toFixed(1) : 'n/a'}${isFallback ? '(fallback)' : ''} | ` +
           `included=${isIncluded}`
         );
       });
