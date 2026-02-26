@@ -87,29 +87,24 @@ export default function HomeSoonMaintenanceBlock({
   /**
    * Map statusVM to semantic category for Home-only lightweight indicator
    * Rules:
-   * - If statusText is 'Просрочено' OR daysToReplace < 0 => category='critical'
-   * - Else if statusText is 'Скоро' AND isPredictionReliable=false => category='warning_unknown'
-   * - Else if statusText includes 'дн' or '~' and daysToReplace is not null:
-   *   - if daysToReplace <= 10 => category='warning'
-   *   - else category='ok'
+   * - If daysToReplace < 0 => category='critical'
+   * - Else if daysToReplace is null and prediction is unreliable => category='warning_unknown'
+   * - Else if daysToReplace <= 10 => category='warning'
+   * - Else category='ok'
    */
   const getCategory = (statusVM: ServiceItemStatusVM): 'critical' | 'warning' | 'warning_unknown' | 'ok' => {
-    if (statusVM.statusText === 'Просрочено' || (statusVM.daysToReplace !== null && statusVM.daysToReplace < 0)) {
+    if (statusVM.daysToReplace !== null && statusVM.daysToReplace < 0) {
       return 'critical';
     }
     
-    if (statusVM.statusText === 'Скоро' && !statusVM.isPredictionReliable) {
+    if (statusVM.daysToReplace === null && !statusVM.isPredictionReliable) {
       return 'warning_unknown';
     }
     
-    if ((statusVM.statusText.includes('дн') || statusVM.statusText.includes('~')) && statusVM.daysToReplace !== null) {
-      if (statusVM.daysToReplace <= 10) {
-        return 'warning';
-      }
-      return 'ok';
+    if (statusVM.daysToReplace !== null && statusVM.daysToReplace <= 10) {
+      return 'warning';
     }
     
-    // Default fallback
     return 'ok';
   };
 

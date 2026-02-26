@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from './components/BottomNav';
+import TopBreadcrumbsBar from './components/TopBreadcrumbsBar';
 import { ToastProvider } from './components/ToastProvider';
 import ScrollLockRouteGuard from './components/ScrollLockRouteGuard';
 import AuthGate from './components/AuthGate';
@@ -27,7 +28,10 @@ export default function RootLayout({
           <AuthGate />
           <ScrollLockRouteGuard />
           <div className="app-container">
-            <main className="app-main">{children}</main>
+            <main className="app-main">
+              <TopBreadcrumbsBar />
+              {children}
+            </main>
             <BottomNav />
           </div>
         </ToastProvider>

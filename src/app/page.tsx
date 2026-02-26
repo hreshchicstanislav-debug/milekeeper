@@ -35,31 +35,89 @@ interface ServiceItemWithStatus {
   statusResult?: ReturnType<typeof calcServiceStatus>; // For debugging
 }
 
+let hasLoggedDevGuestMode = false;
+
+function isDevGuestEnabled() {
+  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEV_GUEST_MODE === '1';
+}
+
+function isNotAuthenticatedReason(reason: unknown) {
+  return reason === 'Not authenticated' || (reason instanceof Error && reason.message === 'Not authenticated');
+}
+
+function toError(reason: unknown) {
+  if (reason instanceof Error) {
+    return reason;
+  }
+  if (typeof reason === 'string') {
+    return new Error(reason);
+  }
+  return new Error('Unknown error');
+}
+
+function logDevGuestModeOnce() {
+  if (process.env.NODE_ENV === 'production' || hasLoggedDevGuestMode) {
+    return;
+  }
+  hasLoggedDevGuestMode = true;
+  const rawValue = process.env.NEXT_PUBLIC_DEV_GUEST_MODE;
+  console.log(
+    `[dev-guest] enabled=${isDevGuestEnabled()} NEXT_PUBLIC_DEV_GUEST_MODE=${rawValue ?? '<unset>'}`
+  );
+}
+
 export default async function Home() {
   // Start DB profiler scope (dev-only)
   const profiler = startRequestScope('home');
+  logDevGuestModeOnce();
   
   // Total timing for all data loading (dev-only)
   const totalStart = process.env.NODE_ENV !== 'production' ? performance.now() : 0;
 
+  const devGuestEnabled = isDevGuestEnabled();
+  let maxMileageEntry: Awaited<ReturnType<typeof getMaxMileageEntry>> = null;
+  let odometerEntries: Awaited<ReturnType<typeof listOdometerEntries>> = [];
+  let serviceItems: Awaited<ReturnType<typeof listServiceItems>> = [];
+
   // Phase 1: Load independent data in parallel (all start simultaneously)
-  // Create promises first (they start executing immediately)
-  const maxMileageEntryP = time('home:load-odometer-max', () => 
-    profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry('Home'))
-  );
-  const odometerEntriesP = time('home:load-odometer-entries', () => 
-    profiler.wrap('odometer:list(50)', () => listOdometerEntries(50))
-  );
-  const serviceItemsP = time('home:load-items', () => 
-    profiler.wrap('service:items:list', () => listServiceItems())
+  const phase1Results = await Promise.allSettled([
+    time('home:load-odometer-max', () =>
+      profiler.wrap('odometer:getMaxMileage', () => getMaxMileageEntry('Home'))
+    ),
+    time('home:load-odometer-entries', () =>
+      profiler.wrap('odometer:list(50)', () => listOdometerEntries(50))
+    ),
+    time('home:load-items', () =>
+      profiler.wrap('service:items:list', () => listServiceItems())
+    ),
+  ]);
+
+  const phase1Rejections = phase1Results.filter(
+    (result): result is PromiseRejectedResult => result.status === 'rejected'
   );
 
-  // Await all parallel requests (no sequential waits)
-  const [maxMileageEntry, odometerEntries, serviceItems] = await Promise.all([
-    maxMileageEntryP,
-    odometerEntriesP,
-    serviceItemsP,
-  ]);
+  if (phase1Rejections.length === 0) {
+    const [maxMileageEntryResult, odometerEntriesResult, serviceItemsResult] = phase1Results;
+    if (
+      maxMileageEntryResult.status === 'fulfilled' &&
+      odometerEntriesResult.status === 'fulfilled' &&
+      serviceItemsResult.status === 'fulfilled'
+    ) {
+      maxMileageEntry = maxMileageEntryResult.value;
+      odometerEntries = odometerEntriesResult.value;
+      serviceItems = serviceItemsResult.value;
+    }
+  } else if (!devGuestEnabled) {
+    throw toError(phase1Rejections[0].reason);
+  } else {
+    const firstNonAuthRejection = phase1Rejections.find(
+      ({ reason }) => !isNotAuthenticatedReason(reason)
+    );
+    if (firstNonAuthRejection) {
+      throw toError(firstNonAuthRejection.reason);
+    }
+    // Dev-guest mode: all phase-1 failures are auth-related, so continue with empty/null defaults.
+  }
 
   // Phase 2: Load dependent data (requires serviceItems from phase 1)
   const lastEventsMap = await time('home:load-events', async () => {

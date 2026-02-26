@@ -10,6 +10,7 @@
 import type { ServiceItem } from '../db/types';
 import type { ServiceStatusResult } from './calcServiceStatus';
 import type { ConfidenceLevel } from '../prediction/dailyRate';
+import { formatServiceTimeFromSignedDays } from '../format/formatServiceTime';
 
 /**
  * Context data for building the view-model
@@ -131,14 +132,8 @@ export function buildServiceItemStatusVM(
   if (daysToReplace === null) {
     // TO-BE: insufficient data -> explicit message
     statusText = 'Недостаточно данных';
-  } else if (statusResult.status === 'OVERDUE') {
-    // Overdue -> "Просрочено"
-    statusText = 'Просрочено';
   } else {
-    // TO-BE: days are integer-ish already (ceil for km-mode, calendar diff for time-mode),
-    // but we keep the "~" prefix for display consistency.
-    const daysRounded = Math.round(daysToReplace);
-    statusText = `~${daysRounded} дней`;
+    statusText = formatServiceTimeFromSignedDays(daysToReplace);
   }
 
   return {

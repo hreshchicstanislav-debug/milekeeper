@@ -149,9 +149,98 @@ body {
   padding-right: env(safe-area-inset-right, var(--sp-4, 1rem));
 }
 
+/* Top breadcrumbs bar with safe logout action */
+.top-breadcrumbs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem);
+  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem) 0;
+  margin-bottom: var(--sp-1, 0.25rem);
+}
+
+.top-breadcrumbs-path {
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-breadcrumbs-logout {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.top-breadcrumbs-logout-trigger {
+  border: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: 1.2;
+  padding: 2px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.top-breadcrumbs-logout-trigger:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.top-breadcrumbs-logout-confirm {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 152px;
+  padding: var(--sp-2, 0.5rem);
+  border: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-sm, 12px);
+  background: var(--surface-bg, #fff);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  z-index: 1100;
+}
+
+.top-breadcrumbs-logout-confirm-title {
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-semibold, 600);
+  color: rgba(0, 0, 0, 0.72);
+  margin-bottom: var(--sp-2, 0.5rem);
+}
+
+.top-breadcrumbs-logout-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-1, 0.25rem);
+}
+
+.top-breadcrumbs-confirm-cancel,
+.top-breadcrumbs-confirm-exit {
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: var(--text-micro, 0.75rem);
+  font-weight: var(--fw-medium, 500);
+  cursor: pointer;
+}
+
+.top-breadcrumbs-confirm-cancel {
+  color: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.top-breadcrumbs-confirm-exit {
+  color: #fff;
+  background: #d70015;
+}
+
 /* Page header - iOS Large Title pattern */
 .page-header {
-  padding-top: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem));
+  padding-top: var(--sp-2, 0.5rem);
   padding-left: var(--sp-4, 1rem);
   padding-right: var(--sp-4, 1rem);
   padding-bottom: 0;

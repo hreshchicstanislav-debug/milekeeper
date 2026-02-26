@@ -6,9 +6,14 @@ import { createBrowserClient } from '@/lib/supabase/browserClient';
 
 const PUBLIC_PATHS = new Set<string>(['/login', '/auth/callback']);
 
+function isDevGuestEnabled() {
+  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_DEV_GUEST_MODE === '1';
+}
+
 export default function AuthGate() {
   const router = useRouter();
   const pathname = usePathname();
+  const devGuestEnabled = isDevGuestEnabled();
 
   const supabase = useMemo(() => createBrowserClient(), []);
 
@@ -38,7 +43,7 @@ export default function AuthGate() {
 
         // Route protection
         const isPublic = PUBLIC_PATHS.has(pathname);
-        if (!hasSession && !isPublic) {
+        if (!hasSession && !isPublic && !devGuestEnabled) {
           router.replace('/login');
         }
         if (hasSession && pathname === '/login') {
@@ -47,7 +52,7 @@ export default function AuthGate() {
       } catch {
         // If anything goes wrong, treat as logged-out
         fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-        if (!PUBLIC_PATHS.has(pathname)) {
+        if (!PUBLIC_PATHS.has(pathname) && !devGuestEnabled) {
           router.replace('/login');
         }
       }
@@ -75,7 +80,7 @@ export default function AuthGate() {
       isMounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [pathname, router, supabase]);
+  }, [devGuestEnabled, pathname, router, supabase]);
 
   return null;
 }

@@ -10,6 +10,7 @@ import { useToast } from './ToastProvider';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
 import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
 import { getAppNow } from '@/lib/appNow';
+import { formatServiceTimeFromSignedDays } from '@/lib/format/formatServiceTime';
 
 // Hook for swipe-to-close gesture
 function useSwipeToClose<T extends HTMLElement>(
@@ -404,6 +405,16 @@ export default function ItemDetailsSheet({
     now: getAppNow(),
   });
 
+  const formatMetricValue = (value: number, unit: string) => {
+    if (unit === 'дней') {
+      return formatServiceTimeFromSignedDays(value);
+    }
+    if (value <= 0) {
+      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${unit}`;
+    }
+    return `${formatNumber(value)} ${unit}`;
+  };
+
   // Dev-only: compare old vs new logic (temporary)
   if (process.env.NODE_ENV !== 'production' && lastEvent && currentMileage !== null) {
     const now = getAppNow();
@@ -621,9 +632,7 @@ export default function ItemDetailsSheet({
                   <div className="calc-row">
                     <span className="k">{statusResult.primary.label}</span>
                     <span className="v">
-                      {statusResult.primary.remainingValue <= 0 
-                        ? `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(statusResult.primary.remainingValue))} ${statusResult.primary.unit}`
-                        : `${formatNumber(statusResult.primary.remainingValue)} ${statusResult.primary.unit}`}
+                      {formatMetricValue(statusResult.primary.remainingValue, statusResult.primary.unit)}
                     </span>
                   </div>
                   {statusResult.primary.kind === 'km' && (
@@ -636,7 +645,7 @@ export default function ItemDetailsSheet({
                       {item.measurement_mode === 'km' && statusResult.remainingDays !== null && !Number.isNaN(statusResult.remainingDays) && (
                         <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
                           <span className="k">Прогноз дней</span>
-                          <span className="v">~{formatNumber(Math.ceil(statusResult.remainingDays))} дн.</span>
+                          <span className="v">{formatServiceTimeFromSignedDays(statusResult.remainingDays)}</span>
                         </div>
                       )}
                       {item.measurement_mode === 'km' && statusResult.remainingKm !== null && statusResult.remainingDays === null && (
@@ -664,10 +673,8 @@ export default function ItemDetailsSheet({
                     <div className="calc-row">
                       <span className="k" style={{ fontSize: '13px' }}>{statusResult.secondary.label}</span>
                       <span className="v" style={{ fontSize: '13px' }}>
-                        {statusResult.secondary.remainingValue !== null && statusResult.secondary.remainingValue <= 0
-                          ? `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(statusResult.secondary.remainingValue))} ${statusResult.secondary.unit}`
-                          : statusResult.secondary.remainingValue !== null
-                          ? `${formatNumber(statusResult.secondary.remainingValue)} ${statusResult.secondary.unit}`
+                        {statusResult.secondary.remainingValue !== null
+                          ? formatMetricValue(statusResult.secondary.remainingValue, statusResult.secondary.unit)
                           : '—'}
                       </span>
                     </div>

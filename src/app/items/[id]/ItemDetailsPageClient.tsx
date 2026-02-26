@@ -11,6 +11,7 @@ import AddServiceItemForm from '@/app/components/AddServiceItemForm';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { logMileageComparison } from '@/lib/dev/mileageDiagnostics';
 import { getAppNow } from '@/lib/appNow';
+import { formatServiceTimeFromSignedDays } from '@/lib/format/formatServiceTime';
 
 interface ItemDetailsPageClientProps {
   item: ServiceItem;
@@ -193,6 +194,16 @@ export default function ItemDetailsPageClient({
     now: getAppNow(),
   });
 
+  const formatMetricValue = (value: number, unit: string) => {
+    if (unit === 'дней') {
+      return formatServiceTimeFromSignedDays(value);
+    }
+    if (value <= 0) {
+      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${unit}`;
+    }
+    return `${formatNumber(value)} ${unit}`;
+  };
+
   return (
     <div className="item-details-page-route">
       <div className="item-details-page">
@@ -357,9 +368,7 @@ export default function ItemDetailsPageClient({
                   <div className="calc-row">
                     <span className="k">{statusResult.primary.label}</span>
                     <span className="v">
-                      {statusResult.primary.remainingValue <= 0 
-                        ? `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(statusResult.primary.remainingValue))} ${statusResult.primary.unit}`
-                        : `${formatNumber(statusResult.primary.remainingValue)} ${statusResult.primary.unit}`}
+                      {formatMetricValue(statusResult.primary.remainingValue, statusResult.primary.unit)}
                     </span>
                   </div>
                   {statusResult.primary.kind === 'km' && (
@@ -371,7 +380,7 @@ export default function ItemDetailsPageClient({
                       {item.measurement_mode === 'km' && statusResult.remainingDays !== null && !Number.isNaN(statusResult.remainingDays) && (
                         <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
                           <span className="k">Прогноз дней</span>
-                          <span className="v">~{formatNumber(Math.ceil(statusResult.remainingDays))} дн.</span>
+                          <span className="v">{formatServiceTimeFromSignedDays(statusResult.remainingDays)}</span>
                         </div>
                       )}
                     </>
@@ -395,9 +404,7 @@ export default function ItemDetailsPageClient({
                     <div className="calc-row">
                       <span className="k">{statusResult.secondary.label}</span>
                       <span className="v">
-                        {statusResult.secondary.remainingValue <= 0 
-                          ? `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(statusResult.secondary.remainingValue))} ${statusResult.secondary.unit}`
-                          : `${formatNumber(statusResult.secondary.remainingValue)} ${statusResult.secondary.unit}`}
+                        {formatMetricValue(statusResult.secondary.remainingValue, statusResult.secondary.unit)}
                       </span>
                     </div>
                   </div>
