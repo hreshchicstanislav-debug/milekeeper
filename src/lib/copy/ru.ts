@@ -21,6 +21,9 @@ export const RU = {
   home: {
     title: 'Главная',
     currentMileage: 'Текущий пробег',
+    estimatedMileage: 'Расчётный пробег',
+    lastActualMileage: 'Последний пробег',
+    lastMeasurement: 'Последний замер',
     noEntriesYet: 'Пока нет записей',
     welcomeMessage: 'Добро пожаловать в MileKeeper — ваш персональный трекер пробега и обслуживания автомобиля.',
     addMileage: 'Добавить пробег',

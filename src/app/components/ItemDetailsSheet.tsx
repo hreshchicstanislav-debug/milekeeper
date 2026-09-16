@@ -6,6 +6,7 @@ import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from './MarkReplacementButton';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
+import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { useToast } from './ToastProvider';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
 import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
@@ -196,7 +197,10 @@ function useSwipeToClose<T extends HTMLElement>(
 
 interface ItemDetailsSheetProps {
   item: ServiceItem;
+  /** Actual (manually entered) odometer — used for recording real service events */
   latestOdometer: any;
+  /** Estimated current odometer — used for forecasts and forecast UI */
+  estimatedOdometer: EstimatedOdometerResult;
   lastEvent?: any; // Last service event for this item (optional, can be computed from history)
   dailyKmRate?: number | null; // Daily km rate for forecasting (optional)
   onClose: () => void;
@@ -207,6 +211,7 @@ interface ItemDetailsSheetProps {
 export default function ItemDetailsSheet({
   item,
   latestOdometer,
+  estimatedOdometer,
   lastEvent: propLastEvent,
   dailyKmRate = null,
   onClose,
@@ -395,8 +400,8 @@ export default function ItemDetailsSheet({
   // Get last event: from prop, or from history if available
   const lastEvent = propLastEvent || (history.length > 0 ? history[0] : null);
 
-  // Calculate status using new helper
-  const currentMileage = latestOdometer?.mileage_km ?? null;
+  // Calculate status using new helper (forecasts run on the estimated odometer)
+  const currentMileage = estimatedOdometer.estimatedKm;
   const statusResult = calcServiceStatus({
     serviceItem: item,
     latestOdometerMileageKm: currentMileage,
@@ -547,7 +552,9 @@ export default function ItemDetailsSheet({
               <div className="calc-row">
                 <span className="k">{RU.items.details.calcCurrentMileage}</span>
                 <span className="v">
-                  {currentMileage !== null ? `${formatNumber(currentMileage)} ${RU.common.km}` : RU.items.details.calcNoCurrentMileage}
+                  {currentMileage !== null
+                    ? `${estimatedOdometer.isEstimated ? '~' : ''}${formatNumber(currentMileage)} ${RU.common.km}`
+                    : RU.items.details.calcNoCurrentMileage}
                 </span>
               </div>
             </div>

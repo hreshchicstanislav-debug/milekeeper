@@ -2,6 +2,7 @@ import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/s
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
+import { computeEstimatedOdometer } from '@/lib/service/estimatedOdometer';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
 import { getAppNow } from '@/lib/appNow';
@@ -41,16 +42,17 @@ export default async function ItemsPage() {
     );
   });
   
-  // Сопоставляем элементы с их последними событиями и вычисляем статус для сортировки
-  const currentMileage = latestOdometer?.mileage_km ?? null;
-  
   // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
   const appNow = getAppNow();
-  
+
   // TO-BE: Compute daily mileage rate (rolling 60 days + fallback 14 active days)
   const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
   const forecastDailyKmRate = dailyRateResult.dailyRate; // number | null
   const isFallbackRate = dailyRateResult.isFallback;
+
+  // Forecasts run on the estimated current odometer, not on the raw last reading
+  const estimatedOdometer = computeEstimatedOdometer(latestOdometer, forecastDailyKmRate, appNow);
+  const currentMileage = estimatedOdometer.estimatedKm;
 
   const itemsWithStatus = items.map((item) => {
     const lastEvent = lastEventsMap[item.id] || null;
@@ -107,5 +109,12 @@ export default async function ItemsPage() {
     console.log(formatProfilerSummary(summary));
   }
 
-  return <ItemsPageClient itemsWithLastEvent={itemsWithLastEvent} latestOdometer={latestOdometer} dailyKmRate={forecastDailyKmRate} />;
+  return (
+    <ItemsPageClient
+      itemsWithLastEvent={itemsWithLastEvent}
+      latestOdometer={latestOdometer}
+      estimatedOdometer={estimatedOdometer}
+      dailyKmRate={forecastDailyKmRate}
+    />
+  );
 }

@@ -44,7 +44,7 @@ export function toLocalDayKey(d: Date): DayKey {
 }
 
 /** Parse a local day key (YYYY-MM-DD) into a Date at local midnight. */
-function fromLocalDayKey(dayKey: DayKey): Date {
+export function fromLocalDayKey(dayKey: DayKey): Date {
   const [y, m, d] = dayKey.split('-').map((x) => parseInt(x, 10));
   return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0);
 }

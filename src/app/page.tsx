@@ -3,6 +3,7 @@ import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/s
 import { computeConfidence } from '@/lib/prediction/dailyRate';
 import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
+import { computeEstimatedOdometer } from '@/lib/service/estimatedOdometer';
 import { pickSoonMaintenanceItems, DEFAULT_THRESHOLDS, type SoonMaintenanceItemInput } from '@/lib/home/soonMaintenance';
 import { buildServiceItemStatusVM, type ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
@@ -137,9 +138,6 @@ export default async function Home() {
     console.log(formatProfilerSummary(summary));
   }
 
-  // Use max mileage entry for "current mileage" display (matches validation logic)
-  const currentMileage = maxMileageEntry?.mileage_km ?? null;
-  
   // Use canonical AppNow for all time-based calculations (TEST mode uses stored AppNow, LIVE uses real time)
   const appNow = getAppNow();
 
@@ -147,6 +145,12 @@ export default async function Home() {
   const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
   const dailyRate = dailyRateResult.dailyRate;
   const confidence = computeConfidence(odometerEntries);
+
+  // Estimated current odometer: last actual reading + elapsed calendar days * dailyRate.
+  // This (not the raw last reading) is what every forecast below is based on, so that
+  // maintenance estimates keep moving with time even without new manual input.
+  const estimatedOdometer = computeEstimatedOdometer(maxMileageEntry, dailyRate, appNow);
+  const currentMileage = estimatedOdometer.estimatedKm;
   
   // TO-BE: Single dailyRate is used for forecasting everywhere
   const forecastDailyKmRate = dailyRate; // number | null
@@ -512,14 +516,17 @@ export default async function Home() {
       </header>
       <HomeContentClient>
         <div className="mileage-card">
-          <div className="mileage-label">{RU.home.currentMileage}</div>
+          <div className="mileage-label">
+            {estimatedOdometer.isEstimated ? RU.home.estimatedMileage : RU.home.lastActualMileage}
+          </div>
           <div className="mileage-value">
-            {maxMileageEntry
-              ? `${formatNumber(maxMileageEntry.mileage_km)} ${RU.common.km}`
+            {estimatedOdometer.estimatedKm !== null
+              ? `${estimatedOdometer.isEstimated ? '~' : ''}${formatNumber(estimatedOdometer.estimatedKm)} ${RU.common.km}`
               : RU.home.noEntriesYet}
           </div>
           {maxMileageEntry && (
             <div className="mileage-date">
+              {RU.home.lastMeasurement}: {formatNumber(maxMileageEntry.mileage_km)} {RU.common.km} ·{' '}
               <LocalDateTime iso={maxMileageEntry.occurred_at} />
             </div>
           )}

@@ -8,14 +8,18 @@ import StatusRowDetail from '../components/StatusRowDetail';
 import { RU, formatNumber } from '@/lib/copy/ru';
 import type { ServiceItem } from '@/lib/db/types';
 import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
+import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 
 interface ItemsPageClientProps {
   itemsWithLastEvent: Array<{ item: ServiceItem; lastEvent: any; statusVM: ServiceItemStatusVM }>;
+  /** Actual (manually entered) odometer — used for forms that record real facts */
   latestOdometer: any;
+  /** Estimated current odometer — used for forecasts and forecast UI */
+  estimatedOdometer: EstimatedOdometerResult;
   dailyKmRate?: number | null;
 }
 
-export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, dailyKmRate = null }: ItemsPageClientProps) {
+export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, estimatedOdometer, dailyKmRate = null }: ItemsPageClientProps) {
   const [selectedItemForDetails, setSelectedItemForDetails] = useState<ServiceItem | null>(null);
   const [editingItem, setEditingItem] = useState<ServiceItem | null>(null);
   const [pendingDetailsItemId, setPendingDetailsItemId] = useState<string | null>(null);
@@ -123,6 +127,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, da
           <ItemDetailsSheet
             item={selectedItemForDetails}
             latestOdometer={latestOdometer}
+            estimatedOdometer={estimatedOdometer}
             lastEvent={lastEvent}
             dailyKmRate={dailyKmRate}
             onClose={() => {

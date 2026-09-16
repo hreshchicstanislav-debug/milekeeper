@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { calculateDailyMileageRateToBe } from '@/lib/service/dailyMileageRateToBe';
+import { computeEstimatedOdometer } from '@/lib/service/estimatedOdometer';
 import ItemDetailsPageClient from './ItemDetailsPageClient';
 import { getAppNow } from '@/lib/appNow';
 
@@ -40,7 +41,10 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
   const appNow = getAppNow();
   const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
   const forecastDailyKmRate = dailyRateResult.dailyRate; // number | null
-  
+
+  // Forecasts run on the estimated current odometer, not on the raw last reading
+  const estimatedOdometer = computeEstimatedOdometer(latestOdometer, forecastDailyKmRate, appNow);
+
   // Validate tab param
   const activeTab = tab === 'calc' ? 'calc' : 'history';
   
@@ -48,6 +52,7 @@ export default async function ItemDetailsPage({ params, searchParams }: PageProp
     <ItemDetailsPageClient
       item={item}
       latestOdometer={latestOdometer}
+      estimatedOdometer={estimatedOdometer}
       lastEvent={lastEvent}
       dailyKmRate={forecastDailyKmRate}
       initialTab={activeTab}
