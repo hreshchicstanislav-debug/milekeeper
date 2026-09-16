@@ -1,13 +1,37 @@
-import { listOdometerEntries, getLatestOdometerEntry } from '@/lib/actions/odometerActions';
+import { listOdometerEntries } from '@/lib/actions/odometerActions';
 import Link from 'next/link';
 import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import DeleteLatestMileageButton from './components/DeleteLatestMileageButton';
 import EditLatestMileageButton from './components/EditLatestMileageButton';
 
+/**
+ * Pick the latest entry from an already-loaded list.
+ *
+ * Reproduces exactly what `getLatestOdometerEntry()` asked the database for —
+ * `ORDER BY occurred_at DESC, mileage_km DESC LIMIT 1` — so the tie-break between two
+ * entries sharing the same `occurred_at` stays identical. `listOdometerEntries()` only
+ * orders by `occurred_at DESC`, so `entries[0]` alone would not be equivalent.
+ */
+function pickLatestEntry<T extends { occurred_at: string; mileage_km: number }>(
+  entries: T[]
+): T | null {
+  if (entries.length === 0) {
+    return null;
+  }
+  return entries.reduce((latest, entry) => {
+    const delta = new Date(entry.occurred_at).getTime() - new Date(latest.occurred_at).getTime();
+    if (delta > 0) return entry;
+    if (delta === 0 && entry.mileage_km > latest.mileage_km) return entry;
+    return latest;
+  });
+}
+
 export default async function HistoryPage() {
+  // One query instead of two: the latest entry is derived from the list we already load,
+  // which removes a second round-trip to Supabase (auth + select) from this page.
   const entries = await listOdometerEntries(50);
-  const latestEntry = await getLatestOdometerEntry('History');
+  const latestEntry = pickLatestEntry(entries);
 
   return (
     <>

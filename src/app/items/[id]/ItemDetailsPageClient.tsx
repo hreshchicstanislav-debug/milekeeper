@@ -50,44 +50,11 @@ export default function ItemDetailsPageClient({
     }
   }, [activeTab, item.id]);
 
-  // Track if we've already refreshed on mount to avoid infinite loops
-  const hasRefreshedOnMountRef = useRef(false);
-
-  // Refresh data on mount and when page becomes visible (user returns to tab)
-  useEffect(() => {
-    // Force refresh on mount to ensure fresh data (only once)
-    if (!hasRefreshedOnMountRef.current) {
-      hasRefreshedOnMountRef.current = true;
-      // Use cache-busting parameter to force server component re-render
-      const currentUrl = window.location.pathname + window.location.search;
-      const urlParams = new URLSearchParams(window.location.search);
-      if (!urlParams.has('_t')) {
-        // Only add cache-busting if not already present
-        const separator = currentUrl.includes('?') ? '&' : '?';
-        router.replace(`${currentUrl}${separator}_t=${Date.now()}`, { scroll: false });
-      }
-      router.refresh();
-    }
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        // Page became visible, refresh to get latest data with cache-busting
-        const currentUrl = window.location.pathname + window.location.search;
-        const urlParams = new URLSearchParams(window.location.search);
-        // Remove old _t parameter if exists
-        urlParams.delete('_t');
-        urlParams.set('_t', String(Date.now()));
-        const newSearch = urlParams.toString();
-        router.replace(`${window.location.pathname}?${newSearch}`, { scroll: false });
-        router.refresh();
-      }
-    };
-
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [router]);
+  // No mount-time or visibilitychange refresh here.
+  // This route is `export const dynamic = 'force-dynamic'`, so every navigation to it
+  // already runs the server component against the database. The removed effect fired a
+  // `router.replace('?_t=...')` plus a `router.refresh()` on every mount and on every
+  // return to the app, which meant three full server renders per tap.
 
   // Update URL when tab changes (only if different from current URL)
   useEffect(() => {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { addServiceEvent } from '@/lib/actions/serviceActions';
 import { RU } from '@/lib/copy/ru';
 import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
@@ -217,7 +216,6 @@ export default function AddServiceEventForm({
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const router = useRouter();
   const mileageInputRef = useRef<HTMLInputElement>(null);
   const hasRefreshedRef = useRef(false); // Guard to prevent multiple refreshes
   const formRef = useRef<HTMLFormElement>(null);
@@ -289,18 +287,14 @@ export default function AddServiceEventForm({
       // Refresh only once after successful action (hasRefreshedRef guard prevents double refresh)
       if (!hasRefreshedRef.current) {
         hasRefreshedRef.current = true;
-        // Call onSuccess first (e.g., to show toast and close parent sheet)
-        // onSuccess may also call handleRefresh() which may trigger router.refresh(),
-        // but we still need to refresh here to ensure all pages update
+        // addServiceEvent() is a server action that calls revalidatePath('/') and
+        // revalidatePath('/items', 'layout'), so Next.js already re-renders the current
+        // route and returns the fresh RSC payload together with the action result.
+        // onSuccess() only needs to handle client-owned state (toast, parent sheet,
+        // and the /api/service-events history list, which RSC does not cover).
         if (onSuccess) {
           onSuccess();
         }
-        // Refresh router to update all pages (Home, /items list, etc.)
-        // Add cache-busting to ensure fresh data on Vercel
-        const url = new URL(window.location.href);
-        url.searchParams.set('_t', Date.now().toString());
-        router.replace(url.pathname + url.search, { scroll: false });
-        router.refresh();
       }
       
       // Close form after success callback

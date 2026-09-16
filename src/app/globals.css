@@ -3538,3 +3538,75 @@ p {
     max-height: 80vh;
   }
 }
+
+/* ==========================================================================
+   Route loading states (loading.tsx)
+   Lightweight placeholders shown instantly on navigation while the server
+   component fetches data. Reuses the existing surface tokens so the skeleton
+   occupies the same visual slots as the real content.
+   ========================================================================== */
+
+.skeleton-block {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.055) 25%,
+    rgba(0, 0, 0, 0.09) 37%,
+    rgba(0, 0, 0, 0.055) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* Grouped surface matching .items-list-group / .history-list-group */
+.skeleton-group {
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-sm, 12px);
+  overflow: hidden;
+}
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  border-bottom: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08));
+}
+
+.skeleton-row:last-child {
+  border-bottom: none;
+}
+
+/* Card matching .mileage-card proportions */
+.skeleton-card {
+  background: var(--surface-bg, #ffffff);
+  border: 1px solid var(--surface-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-md, 16px);
+  padding: var(--sp-4, 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 0.75rem);
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4, 1rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block {
+    animation: none;
+    background: rgba(0, 0, 0, 0.07);
+  }
+}

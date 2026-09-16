@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import AddServiceEventForm from './AddServiceEventForm';
 import { RU } from '@/lib/copy/ru';
 
@@ -24,7 +23,6 @@ export default function MarkReplacementButton({
 }: MarkReplacementButtonProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [currentMileage, setCurrentMileage] = useState<number | null>(defaultMileage ?? null);
-  const router = useRouter();
 
   // Update currentMileage when defaultMileage prop changes (after server refresh)
   useEffect(() => {
@@ -52,18 +50,11 @@ export default function MarkReplacementButton({
   }
 
   const handleOpenForm = () => {
-    // Refresh data before opening form to ensure we have latest mileage
-    // This is critical for Vercel where cached data might be stale
-    // Add cache-busting parameter to force fresh data fetch
-    const url = new URL(window.location.href);
-    url.searchParams.set('_t', Date.now().toString());
-    router.replace(url.pathname + url.search, { scroll: false });
-    router.refresh();
-    // Open form after a short delay to allow refresh to complete
-    // The form will use the updated defaultMileage from props after refresh
-    setTimeout(() => {
-      setIsFormOpen(true);
-    }, 100);
+    // Open immediately: `defaultMileage` is the actual (manually entered) odometer
+    // reading that the server component already resolved for this render, so there is
+    // nothing to wait for. The previous refresh-then-open dance cost two full server
+    // renders plus a 100ms timer before any UI appeared.
+    setIsFormOpen(true);
   };
 
   return (

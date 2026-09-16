@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, startTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect } from 'react';
 import { addOdometerEntry } from '@/lib/actions/odometerActions';
 import { RU } from '@/lib/copy/ru';
 import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
@@ -20,7 +19,6 @@ export default function AddMileageForm() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const router = useRouter();
   const mileageInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -110,17 +108,10 @@ export default function AddMileageForm() {
       setShowDate(false);
       setShowNote(false);
       setIsOpen(false);
-      
-      // Force refresh with cache-busting to ensure data updates on Vercel
-      // Use startTransition for smoother UI update, but also add cache-busting
-      startTransition(() => {
-        // Add cache-busting parameter to force fresh data fetch
-        const url = new URL(window.location.href);
-        url.searchParams.set('_t', Date.now().toString());
-        // Use replace to avoid adding to history, but ensure fresh data
-        router.replace(url.pathname + url.search);
-        router.refresh();
-      });
+
+      // No manual refresh here: addOdometerEntry() is a server action that calls
+      // revalidatePath('/'), so Next.js re-renders the current page and streams the
+      // updated RSC payload back in the same response as the action result.
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : RU.mileageForm.errorFailedToAdd;
       // Переводим известные ошибки с сервера

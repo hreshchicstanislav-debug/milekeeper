@@ -145,12 +145,9 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
       setStatus(
         `${RU.devTools.successSimulated}: +${result.totalIncrementKm} км за ${result.dayIncrement} дн., ${new Date(result.entry.occurred_at).toLocaleDateString('ru-RU')}`
       );
-      // Force page refresh to show updated mileage
-      // Wait longer for server action to complete and cache invalidation to propagate
-      await new Promise(resolve => setTimeout(resolve, 800));
-      // Use router.replace with cache-busting parameter to force fresh data fetch
-      router.replace(`/?_t=${Date.now()}`);
-      // Also call refresh to ensure server components re-fetch
+      // Re-render the current page once. No `?_t=` cache-buster: simulateTripRange() is a
+      // server action that revalidates the affected paths, and this panel only ever renders
+      // on Home, so the replace() was navigating to the page we are already on.
       router.refresh();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : RU.devTools.statusError;
