@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
+import { postSessionSync } from '@/lib/auth/sessionSync';
 
 export default function AuthCallbackClient() {
   const router = useRouter();
@@ -26,13 +27,11 @@ export default function AuthCallbackClient() {
           // If no code, try existing browser session
           const { data } = await supabase.auth.getSession();
           if (data.session) {
-            await fetch('/api/auth/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                access_token: data.session.access_token,
-                refresh_token: data.session.refresh_token,
-              }),
+            // Awaited on purpose: the cookies must exist before '/' is rendered
+            // on the server, or middleware would bounce us straight back here.
+            await postSessionSync({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
             });
             router.replace('/');
             return;
@@ -51,13 +50,9 @@ export default function AuthCallbackClient() {
           return;
         }
 
-        await fetch('/api/auth/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-          }),
+        await postSessionSync({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
         });
 
         router.replace('/');

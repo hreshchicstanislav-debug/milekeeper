@@ -1,8 +1,10 @@
 import { cookies } from 'next/headers';
 import type { NextRequest, NextResponse } from 'next/server';
+import { AUTH_COOKIE_MAX_AGE, AUTH_COOKIE_OPTIONS, COOKIE_AT, COOKIE_RT } from './authCookieConfig';
 
-export const COOKIE_AT = 'mk_sb_at';
-export const COOKIE_RT = 'mk_sb_rt';
+// Names live in authCookieConfig.ts so middleware (edge runtime) can share them
+// without pulling in `next/headers`. Re-exported here for existing callers.
+export { COOKIE_AT, COOKIE_RT };
 
 export function readAuthCookiesFromRequest(req: NextRequest) {
   const accessToken = req.cookies.get(COOKIE_AT)?.value ?? null;
@@ -23,24 +25,11 @@ export function setAuthCookiesOnResponse(
   refreshToken: string
 ) {
   // httpOnly so it can be used server-side for RLS, but not readable by JS.
-  res.cookies.set(COOKIE_AT, accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30,
-  });
-  res.cookies.set(COOKIE_RT, refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  res.cookies.set(COOKIE_AT, accessToken, { ...AUTH_COOKIE_OPTIONS, maxAge: AUTH_COOKIE_MAX_AGE });
+  res.cookies.set(COOKIE_RT, refreshToken, { ...AUTH_COOKIE_OPTIONS, maxAge: AUTH_COOKIE_MAX_AGE });
 }
 
 export function clearAuthCookiesOnResponse(res: NextResponse) {
-  res.cookies.set(COOKIE_AT, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
-  res.cookies.set(COOKIE_RT, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
+  res.cookies.set(COOKIE_AT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
+  res.cookies.set(COOKIE_RT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
 }
-
