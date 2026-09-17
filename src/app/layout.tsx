@@ -14,6 +14,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Same value as `--app-bg` in globals.css and as the manifest's theme_color.
+  // Deliberately no `viewportFit: 'cover'`: the safe-area insets in globals.css
+  // currently resolve to 0, and opting into the full viewport would make them
+  // real and shift the layout. That is a separate, visual change.
+  themeColor: '#f2f2f7',
 };
 
 export default function RootLayout({

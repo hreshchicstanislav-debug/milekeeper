@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { middleware } from '../../../middleware';
+import { config, middleware } from '../../../middleware';
 
 function makeJwt(expSecondsFromNow: number): string {
   const encode = (value: object) =>
@@ -245,4 +245,81 @@ describe('middleware — dev-guest mode', () => {
     expect(responseCookie(response, 'mk_sb_at')).toMatchObject({ value: 'at-new' });
     expect(forwardedRequestCookies(response)).toContain('mk_sb_at=at-new');
   });
+});
+
+describe('middleware — matcher scope', () => {
+  // The matcher is a static string that Next compiles with path-to-regexp; it
+  // is never exercised by calling middleware() directly, so these tests compile
+  // the literal themselves. For a pattern of this shape — a single leading
+  // slash followed by one negative-lookahead group — an anchored RegExp is an
+  // exact stand-in, and the real behaviour is re-checked over HTTP on preview.
+  const pattern = (config.matcher as string[])[0];
+  const matcher = new RegExp(`^${pattern}$`);
+
+  const runsMiddleware = (pathname: string) => matcher.test(pathname);
+
+  it('exposes exactly one matcher pattern', () => {
+    expect(config.matcher).toHaveLength(1);
+  });
+
+  describe('public PWA assets bypass the middleware entirely', () => {
+    // Skipping the middleware is what keeps these off the auth path *and* off
+    // withNoStore(), so they can be cached by the browser like normal statics.
+    it.each([
+      '/manifest.webmanifest',
+      '/favicon.ico',
+      '/apple-icon.png',
+      '/icon-192.png',
+      '/icon-512.png',
+      '/icon-maskable-512.png',
+    ])('%s', (pathname) => {
+      expect(runsMiddleware(pathname)).toBe(false);
+    });
+  });
+
+  describe('protected app routes still run through the middleware', () => {
+    it.each([
+      '/',
+      '/items',
+      '/items/6f1c0b2e-0000-4000-8000-000000000000',
+      '/history',
+    ])('%s', (pathname) => {
+      expect(runsMiddleware(pathname)).toBe(true);
+    });
+  });
+
+  describe('auth routes still run through the middleware', () => {
+    // They are public, but isPublicPath() is what makes them so — the
+    // middleware still has to see them to apply no-store and to bounce a
+    // signed-in user off /login.
+    it.each(['/login', '/auth/callback'])('%s', (pathname) => {
+      expect(runsMiddleware(pathname)).toBe(true);
+    });
+  });
+
+  it('does not let a protected route hide behind an asset name', () => {
+    // The lookahead is anchored at the start of the path, so only a top-level
+    // asset is excluded — nothing nested under a real route.
+    expect(runsMiddleware('/items/icon-192.png')).toBe(true);
+    expect(runsMiddleware('/history/manifest.webmanifest')).toBe(true);
+  });
+
+  it('still excludes API routes and Next internals', () => {
+    expect(runsMiddleware('/api/auth/sync')).toBe(false);
+    expect(runsMiddleware('/_next/static/chunks/abc123.js')).toBe(false);
+    expect(runsMiddleware('/_next/image')).toBe(false);
+  });
+});
+
+describe('middleware — PWA assets are not reachable through isPublicPath', () => {
+  // Belt and braces for the matcher: even if a request for an asset somehow
+  // reached the middleware, it must not have been quietly promoted to a public
+  // path, because that would also hand it no-store headers.
+  it.each(['/manifest.webmanifest', '/icon-192.png', '/apple-icon.png'])(
+    '%s still redirects when it reaches the middleware without a session',
+    async (pathname) => {
+      const response = await middleware(request(pathname));
+      expect(response.status).toBe(307);
+    }
+  );
 });

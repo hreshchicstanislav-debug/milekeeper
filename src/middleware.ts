@@ -148,8 +148,22 @@ export const config = {
      * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     *
+     * and except the public PWA assets, which must be reachable without a
+     * session. A web app manifest is fetched with `credentials: omit`, so the
+     * request arrives without the auth cookies no matter who is signed in;
+     * routing it through this middleware would answer it — and every icon
+     * beside it — with a 307 to /login and silently break installability.
+     *
+     * These are excluded at the matcher rather than in isPublicPath() on
+     * purpose: skipping the middleware entirely also skips withNoStore(), so
+     * the icons keep their normal static cache headers instead of being
+     * re-downloaded on every launch.
+     *
+     * Each asset is listed by name rather than by a broad `.png`-style pattern
+     * so that no future route can fall through the gap by accident. A service
+     * worker and an offline page would be added here the same way.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon\\.ico|apple-icon\\.png|icon-192\\.png|icon-512\\.png|icon-maskable-512\\.png|manifest\\.webmanifest).*)',
   ],
 };
