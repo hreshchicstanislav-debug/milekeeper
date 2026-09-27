@@ -180,6 +180,7 @@ export default function ItemDetailsPageClient({
     <div className="item-details-page-route">
       <div className="item-details-page">
         <div className="item-details-page-shell">
+        <div className="item-details-page-scroll">
         {/* Sticky Header */}
         <div className="item-details-page-header">
         <div className="item-details-page-header-row">
@@ -388,6 +389,7 @@ export default function ItemDetailsPageClient({
           </div>
         )}
       </main>
+        </div>
 
       {/* Footer */}
       <div className="item-details-page-footer">
@@ -414,8 +416,6 @@ export default function ItemDetailsPageClient({
 
       {/* Edit form modal (opened from Settings button) */}
       {editingItem && (
-        <div className="modal-overlay" onClick={() => setEditingItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <AddServiceItemForm
               mode="edit"
               initialItem={editingItem}
@@ -427,8 +427,6 @@ export default function ItemDetailsPageClient({
                 handleRefresh();
               }}
             />
-          </div>
-        </div>
       )}
     </div>
   );

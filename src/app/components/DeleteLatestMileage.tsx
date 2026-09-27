@@ -1,5 +1,7 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteLatestOdometerEntry } from '@/lib/actions/odometerActions';
@@ -55,7 +57,7 @@ export default function DeleteLatestMileage({
   }
 
   return (
-    <div className="add-mileage-form-container">
+    <ModalSheet label={RU.history.delete.confirmTitle} onClose={handleCancel} busy={isDeleting}>
       <div ref={formRef} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -102,7 +104,7 @@ export default function DeleteLatestMileage({
           </button>
         </div>
       </div>
-    </div>
+    </ModalSheet>
   );
 }
 

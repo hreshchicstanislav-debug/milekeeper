@@ -1,5 +1,7 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useRef, useEffect } from 'react';
 import { addOdometerEntry } from '@/lib/actions/odometerActions';
 import { RU } from '@/lib/copy/ru';
@@ -137,8 +139,8 @@ export default function AddMileageForm() {
   // Swipe-to-close gesture
   useSwipeToClose<HTMLFormElement>(formRef, handleCancel, isOpen);
 
-  if (!isOpen) {
-    return (
+  return (
+    <>
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -146,11 +148,8 @@ export default function AddMileageForm() {
       >
         {RU.home.addMileage}
       </button>
-    );
-  }
-
-  return (
-    <div className="add-mileage-form-container">
+      {isOpen && (
+    <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector=".add-mileage-button">
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -275,7 +274,9 @@ export default function AddMileageForm() {
           </button>
         </div>
       </form>
-    </div>
+    </ModalSheet>
+      )}
+    </>
   );
 }
 

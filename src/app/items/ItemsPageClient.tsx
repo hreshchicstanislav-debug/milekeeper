@@ -150,8 +150,6 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, es
 
       {/* Edit form modal (opened from Details sheet) */}
       {editingItem && (
-        <div className="modal-overlay" onClick={() => setEditingItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <AddServiceItemForm
               mode="edit"
               initialItem={editingItem}
@@ -166,8 +164,6 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, es
                 setPendingDetailsItemId(itemId);
               }}
             />
-          </div>
-        </div>
       )}
     </>
   );

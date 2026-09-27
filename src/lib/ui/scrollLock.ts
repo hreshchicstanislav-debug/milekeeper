@@ -14,6 +14,23 @@ let savedStyles: {
   right: string;
 } | null = null;
 let savedScrollY = 0;
+let pendingScrollY: number | null = null;
+let restoreVersion = 0;
+
+function restoreScrollPosition(scrollY: number): void {
+  pendingScrollY = scrollY;
+  const version = ++restoreVersion;
+  // Restore immediately so a same-frame reopen (including Strict Mode) saves
+  // the original position, rather than the fixed body's temporary scrollY=0.
+  window.scrollTo({ top: scrollY, behavior: 'instant' });
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (lockCount !== 0 || version !== restoreVersion) return;
+      window.scrollTo({ top: scrollY, behavior: 'instant' });
+      pendingScrollY = null;
+    });
+  });
+}
 
 /**
  * Lock body scroll (increment counter)
@@ -25,7 +42,9 @@ export function lockScroll(reason: string): void {
   // Save original styles only on first lock
   if (lockCount === 1) {
     // Save current scroll position before locking
-    savedScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+    savedScrollY = pendingScrollY ?? (window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0);
+    pendingScrollY = null;
+    restoreVersion++;
     
     savedStyles = {
       overflow: document.body.style.overflow || '',
@@ -87,16 +106,7 @@ export function unlockScroll(reason: string): void {
     savedStyles = null;
     savedScrollY = 0;
     
-    // Restore scroll position after styles are applied
-    // Use double requestAnimationFrame to ensure layout is stable
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: scrollYToRestore,
-          behavior: 'instant' // Instant restore, no smooth scroll
-        });
-      });
-    });
+    restoreScrollPosition(scrollYToRestore);
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[ScrollLock] UNLOCK (count: ${lockCount}) - ${reason}`, {
@@ -141,14 +151,7 @@ export function resetScrollLocks(reason: string): void {
   if (savedScrollY > 0) {
     const scrollYToRestore = savedScrollY;
     savedScrollY = 0;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: scrollYToRestore,
-          behavior: 'instant'
-        });
-      });
-    });
+    restoreScrollPosition(scrollYToRestore);
   }
 }
 
@@ -158,4 +161,3 @@ export function resetScrollLocks(reason: string): void {
 export function getScrollLockCount(): number {
   return lockCount;
 }
-

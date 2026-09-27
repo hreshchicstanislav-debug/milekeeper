@@ -1,5 +1,7 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useEffect, useRef } from 'react';
 import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
@@ -8,8 +10,6 @@ import MarkReplacementButton from './MarkReplacementButton';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { useToast } from './ToastProvider';
-import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
-import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
 import { getAppNow } from '@/lib/appNow';
 import { formatServiceTimeFromSignedDays } from '@/lib/format/formatServiceTime';
 
@@ -233,16 +233,6 @@ export default function ItemDetailsSheet({
   // Swipe-to-close gesture
   useSwipeToClose<HTMLDivElement>(modalContentRef, onClose, true);
 
-  // Lock body scroll and register modal when sheet is open (using refcount manager)
-  useEffect(() => {
-    lockScroll('ItemDetailsSheet');
-    modalOpened('ItemDetailsSheet');
-    return () => {
-      unlockScroll('ItemDetailsSheet');
-      modalClosed('ItemDetailsSheet');
-    };
-  }, []);
-
   const loadHistory = async (force = false) => {
     const limit = 10;
     const key = `${item.id}:${limit}`;
@@ -461,7 +451,7 @@ export default function ItemDetailsSheet({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalSheet label={item.title} onClose={onClose} dismissOnBackdrop>
       <div className="modal-content" ref={modalContentRef} onClick={(e) => e.stopPropagation()}>
         <div className="item-details-header">
           {/* Grabber bar - iOS style */}
@@ -728,7 +718,7 @@ export default function ItemDetailsSheet({
           </div>
         </div>
       </div>
-    </div>
+    </ModalSheet>
   );
 }
 

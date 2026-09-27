@@ -36,6 +36,11 @@ export function ToastProvider({ children }: ToastProviderProps) {
   });
   
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const toastRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (toast.open) toastRef.current?.showPopover?.();
+  }, [toast.open, toast.title, toast.subtitle]);
 
   const showToast = (
     title: string,
@@ -82,7 +87,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
       {children}
       {/* Toast overlay */}
       {toast.open && (
-        <div className="toast-overlay toast-open">
+        <div ref={toastRef} popover="manual" role="status" aria-live="polite" className="toast-overlay toast-open">
           <div className={`toast-card toast-${toast.type} toast-enter`}>
             {toast.type === 'success' && (
               <svg
@@ -112,4 +117,3 @@ export function ToastProvider({ children }: ToastProviderProps) {
     </ToastContext.Provider>
   );
 }
-

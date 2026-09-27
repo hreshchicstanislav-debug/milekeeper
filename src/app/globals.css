@@ -2,7 +2,7 @@
 
 /* CSS Variables */
 :root {
-  --tabbar-height: 72px; /* Height of bottom navigation bar (including safe area) */
+  --tabbar-height: 76px; /* Measured by BottomNav, including safe area. */
   --app-max-width: 430px; /* Maximum width for app container and all overlays/sheets */
   
   /* iOS-like Control System Tokens */
@@ -124,11 +124,11 @@ body {
 .app-main {
   flex: 1;
   padding: var(--sp-4, 1rem);
-  padding-bottom: calc(var(--sp-4, 1rem) + 80px); /* Bottom padding for nav + content padding */
+  padding-bottom: calc(var(--sp-4, 1rem) + var(--tabbar-height)); /* Bottom padding for nav + content padding */
   padding-top: env(safe-area-inset-top, 0);
   padding-left: env(safe-area-inset-left, var(--sp-4, 1rem));
   padding-right: env(safe-area-inset-right, var(--sp-4, 1rem));
-  min-height: calc(100dvh - 80px); /* Full height minus nav */
+  min-height: 100dvh;
 }
 
 /* Route-specific: Item Details page - constrain app shell to prevent body scroll */
@@ -138,19 +138,16 @@ body {
 }
 
 .app-main:has(.item-details-page-route) {
-  padding-top: 0;
-  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--tabbar-height);
   overflow: hidden;
-  max-height: calc(100dvh - var(--tabbar-height, 72px) - env(safe-area-inset-bottom, 0px));
   min-height: 0;
-  height: 100%;
-  /* Keep horizontal padding for safe-area insets */
-  padding-left: env(safe-area-inset-left, var(--sp-4, 1rem));
-  padding-right: env(safe-area-inset-right, var(--sp-4, 1rem));
 }
 
 /* Top breadcrumbs bar with safe logout action */
 .top-breadcrumbs-bar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -183,7 +180,9 @@ body {
   font-size: var(--text-micro, 0.75rem);
   font-weight: var(--fw-medium, 500);
   line-height: 1.2;
-  padding: 2px 4px;
+  padding: 8px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -222,7 +221,9 @@ body {
 .top-breadcrumbs-confirm-exit {
   border: 0;
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 8px;
+  min-width: 44px;
+  min-height: 44px;
   font-size: var(--text-micro, 0.75rem);
   font-weight: var(--fw-medium, 500);
   cursor: pointer;
@@ -266,46 +267,10 @@ body {
   padding-right: var(--sp-4, 1rem);
 }
 
-/* Home screen: enforce single viewport constraint (no vertical overflow) */
+/* Home uses the document scroll, including short screens and expanded content. */
 .page-content.home-content {
-  /* Calculate available height for Home content:
-     - Start with 100dvh (full dynamic viewport height)
-     - Subtract safe-area insets (top and bottom)
-     - Subtract page header: padding-top (safe-area-top) + h1 height (~1.75rem ≈ 28px) + margin-bottom (1.5rem ≈ 24px) ≈ 52px + safe-area-top
-     - Subtract bottom nav: 72px base + safe-area-bottom
-     - Note: app-main padding (1rem top/bottom) is already accounted in layout flow
-     - Using more precise calculation: 100dvh - header - nav - safe-areas
-  */
-  max-height: calc(
-    100dvh 
-    - env(safe-area-inset-top, 0) 
-    - env(safe-area-inset-bottom, 0) 
-    - 52px /* page header: h1 (1.75rem ≈ 28px) + margin-bottom (1.5rem ≈ 24px) */
-    - 72px /* bottom nav base height (--tabbar-height) */
-    - 2rem /* app-main vertical padding (1rem top + 1rem bottom) */
-  );
-  overflow-y: hidden; /* Prevent vertical scrolling when collapsed */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
   display: flex;
   flex-direction: column;
-}
-
-/* When dev panel is expanded: make .page-content.home-content a scroll container */
-/* This allows scrolling within Home content only, not the entire page */
-.page-content.home-content[data-dev-expanded='true'] {
-  /* Use explicit height (not max-height) for iOS scroll to work */
-  height: calc(
-    100dvh 
-    - env(safe-area-inset-top, 0) 
-    - env(safe-area-inset-bottom, 0) 
-    - 52px /* page header */
-    - 72px /* bottom nav base height */
-    - 2rem /* app-main vertical padding */
-  );
-  max-height: none; /* Remove max-height constraint */
-  overflow-y: auto; /* Enable vertical scrolling */
-  -webkit-overflow-scrolling: touch; /* iOS smooth scrolling */
-  overflow-x: hidden; /* Keep horizontal overflow hidden */
 }
 
 /* Home adaptive content container */
@@ -633,8 +598,10 @@ body {
   display: flex;
   align-items: center;
   gap: var(--sp-1, 0.25rem);
-  flex-shrink: 0;
   white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 60%;
 }
 
 .status-row-compact-status-text {
@@ -1010,9 +977,10 @@ body {
   background-color: #fff;
   border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
   padding: var(--sp-2, 0.5rem) 0;
-  padding-bottom: calc(var(--sp-2, 0.5rem) + env(safe-area-inset-bottom, 0));
   z-index: 1000;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  padding-top: 8px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 .nav-item {
@@ -1022,12 +990,13 @@ body {
   justify-content: center;
   text-decoration: none;
   color: rgba(0, 0, 0, 0.6);
-  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem);
   border-radius: var(--control-radius, 12px);
   transition: background-color 0.15s ease, color 0.15s ease;
-  min-width: 60px;
+  min-width: 0;
+  flex: 1;
   min-height: var(--control-height-sm, 44px); /* Ensure minimum touch target */
-  gap: var(--sp-1, 0.25rem);
+  padding: 8px;
+  gap: 4px;
 }
 
 .nav-item:hover {
@@ -1045,11 +1014,13 @@ body {
 }
 
 .nav-icon {
-  font-size: var(--text-heading, 1.5rem);
   line-height: 1;
+  font-size: 24px;
 }
 
 .nav-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: var(--text-micro, 0.75rem);
   font-weight: var(--fw-medium, 500);
   line-height: var(--lh-tight, 1.2);
@@ -1138,22 +1109,30 @@ p {
 }
 
 /* Add Mileage Form */
-.add-mileage-form-container {
+/* Portaled native dialogs occupy the top layer; only their body scrolls. */
+.modal-sheet {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   width: 100%;
-  max-width: var(--app-max-width, 430px);
-  margin-left: auto;
-  margin-right: auto;
-  background-color: rgba(0, 0, 0, 0.4); /* iOS-like subtle dim */
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: hidden;
+}
+
+.modal-sheet[open] {
   display: flex;
   align-items: flex-end;
-  z-index: 2000;
-  padding: env(safe-area-inset-bottom, 0) env(safe-area-inset-right, 0) env(safe-area-inset-left, 0);
-  box-sizing: border-box;
+  justify-content: center;
+}
+
+.modal-sheet::backdrop {
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .add-mileage-form {
@@ -1187,9 +1166,9 @@ p {
   display: flex;
   justify-content: space-between;
   align-items: center; /* Center-align row items for consistent baseline */
-  padding: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem)) var(--sheet-header-pad-x, var(--sp-4, 1rem)) var(--sp-4, 1rem);
-  gap: var(--sp-3, 0.75rem);
   min-height: 44px; /* Ensure minimum height for touch targets and visual stability */
+  padding: 16px;
+  gap: 12px;
 }
 
 .form-header h2 {
@@ -1203,9 +1182,11 @@ p {
   /* Allow line-wrap for long titles, prevent truncation */
   white-space: normal;
   word-wrap: break-word;
-  overflow-wrap: break-word;
   /* Reserve space for close button (44px + 12px gap = 56px) to prevent wrapping under button */
   max-width: calc(100% - 56px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  max-height: 20dvh;
 }
 
 /* Form content area - scrollable */
@@ -1213,8 +1194,8 @@ p {
   flex: 1 1 auto; /* Changed from flex: 1 to avoid iOS flex sizing issues */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch; /* iOS smooth scrolling */
-  padding: var(--sheet-content-pad-y, var(--sp-5, 1.5rem)) var(--sheet-content-pad-x, var(--sp-4, 1rem));
   min-height: 0; /* Critical for flex scroll to work */
+  padding: 24px 16px;
 }
 
 /* First form-field in form-content should not have extra top margin */
@@ -1527,8 +1508,6 @@ p {
 /* Hardened against keyboard: uses safe-area and viewport units */
 .form-actions {
   display: flex;
-  gap: var(--sp-4, 1rem);
-  padding: var(--sp-4, 1rem) var(--sheet-header-pad-x, var(--sp-4, 1rem));
   padding-bottom: calc(var(--sp-5, 1.5rem) + env(safe-area-inset-bottom, 0)); /* Account for safe area */
   position: sticky;
   bottom: 0;
@@ -1538,6 +1517,9 @@ p {
   flex-shrink: 0;
   /* Ensure footer stays above keyboard on iOS */
   max-height: calc(100dvh - env(keyboard-inset-height, 0px));
+  gap: 16px;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  flex-wrap: wrap;
 }
 
 .cancel-button,
@@ -1754,9 +1736,10 @@ p {
 
 .history-item-main {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
-  gap: var(--sp-4, 1rem);
+  gap: var(--sp-2) var(--sp-4);
 }
 
 .history-mileage {
@@ -1764,11 +1747,14 @@ p {
   font-weight: 600;
   color: #1a1a1a;
   line-height: 1.2;
-  flex: 1;
+  flex: 1 0 auto;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
 .history-meta {
+  margin-left: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1999,8 +1985,8 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.2em;
-  height: 1.2em;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -2017,6 +2003,7 @@ p {
 .status-info-wrapper {
   position: relative;
   display: inline-flex;
+  flex-shrink: 0;
 }
 
 .status-info-tooltip {
@@ -2245,64 +2232,6 @@ p {
   min-height: 0; /* Critical for flex children to scroll on iOS */
 }
 
-/* When AddServiceItemForm is inside modal-content, override its container styles */
-.modal-content .add-mileage-form-container {
-  position: static;
-  top: auto;
-  left: auto;
-  right: auto;
-  bottom: auto;
-  width: 100%;
-  max-width: 100%;
-  height: 100%; /* Explicit height for iOS scroll container calculation */
-  margin: 0;
-  background-color: transparent;
-  display: flex;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.modal-content .add-mileage-form {
-  width: 100%;
-  max-width: 100%;
-  height: 100%; /* Explicit height for iOS scroll container calculation */
-  max-height: 100%;
-  margin: 0;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Ensure form-content can scroll inside modal-content on mobile */
-.modal-content .form-content {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  overscroll-behavior: contain;
-}
-
-/* Form header inside modal-content: use flex instead of sticky */
-.modal-content .form-header {
-  position: static;
-  flex: 0 0 auto;
-  flex-shrink: 0;
-}
-
-/* Form actions inside modal-content: use flex instead of sticky */
-.modal-content .form-actions {
-  position: static;
-  flex: 0 0 auto;
-  flex-shrink: 0;
-}
-
 /* Limit modal width on desktop to match app container */
 @media (min-width: 430px) {
   .modal-content {
@@ -2312,24 +2241,23 @@ p {
 
 /* Item Details Page (dedicated route, not modal) */
 .item-details-page-route {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .item-details-page-route .item-details-page {
-  /* занимает область экрана ВНУТРИ app shell */
-  height: 100%;
-  max-height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 .item-details-page-shell {
-  height: 100%;
-  max-height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -2337,8 +2265,8 @@ p {
   width: 100%;
   max-width: 520px;
   padding: 0 var(--sp-4, 1rem);
-  padding-left: calc(var(--sp-4, 1rem) + env(safe-area-inset-left, 0));
-  padding-right: calc(var(--sp-4, 1rem) + env(safe-area-inset-right, 0));
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
 }
 
 .item-details-page-header,
@@ -2349,10 +2277,11 @@ p {
 
 .item-details-page-header-row {
   display: flex;
-  align-items: center;
-  gap: var(--sp-3, 0.75rem);
-  padding: max(env(safe-area-inset-top, 0), var(--sp-4, 1rem)) var(--sp-4, 1rem) var(--sp-3, 0.75rem);
-  min-height: 44px;
+  overflow-y: auto;
+  min-height: 0;
+  align-items: flex-start;
+  padding: 16px 16px 12px;
+  gap: 12px;
 }
 
 .item-details-page-back {
@@ -2408,20 +2337,24 @@ p {
   overscroll-behavior: contain;
   padding: var(--sp-4, 1rem) 0;
   /* Add padding-bottom to prevent content from hiding under footer */
-  padding-bottom: calc(var(--sp-4, 1rem) + env(safe-area-inset-bottom, 0px));
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 .item-details-page-footer {
   /* Pinned footer - always visible at bottom */
-  padding: var(--sp-4, 1rem) var(--sp-4, 1rem) calc(var(--sp-4, 1rem) + env(safe-area-inset-bottom, 0px));
   background: var(--app-bg, #f2f2f7);
   display: flex;
-  gap: var(--sp-4, 1rem);
   align-items: stretch;
   flex: 0 0 auto;
   /* Ensure footer stays above tabbar */
   position: relative;
   z-index: 1;
+  padding: 16px 0;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 /* Hide Next.js dev toast overlay only (safe, specific selector) */
@@ -2474,7 +2407,7 @@ p {
   min-height: var(--control-height-sm, 44px);
 }
 
-.item-details-page-footer .item-details-action-primary > * {
+.item-details-page-footer .item-details-action-primary > .mark-replacement-button {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -2518,16 +2451,15 @@ p {
 /* Details tabs - part of sticky header, no offset needed */
 .details-tabs {
   display: flex;
-  gap: var(--sp-2, 0.5rem);
-  padding: var(--sp-2, 0.5rem) var(--sp-4, 1rem) var(--sp-3, 0.75rem);
   background: var(--sheet-surface-bg, #fff);
   border-top: 1px solid var(--sheet-divider, rgba(0, 0, 0, 0.08)); /* Visual separation from title row */
   flex-shrink: 0;
+  padding: 8px 16px 12px;
+  gap: 8px;
 }
 
 .details-tab {
   flex: 1;
-  padding: var(--sp-3, 0.75rem);
   min-height: 44px; /* iOS minimum touch target */
   border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -2542,6 +2474,9 @@ p {
   align-items: center;
   justify-content: center;
   position: relative;
+  min-width: 0;
+  padding: 12px 8px;
+  overflow-wrap: anywhere;
 }
 
 .details-tab:hover {
@@ -3445,8 +3380,16 @@ p {
 /* Toast notification system */
 /* Toast overlay: covers viewport but doesn't block interactions (pointer-events: none) */
 /* Toast card: has pointer-events: auto so it's clickable, but overlay allows clicks through to tabbar */
-/* z-index: 9999 ensures toast is above modals (2000) and tabbar (1000) */
+/* A manual popover puts notifications above an already-open dialog. */
 .toast-overlay {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  background: transparent;
   position: fixed;
   inset: 0;
   display: grid;
@@ -3467,12 +3410,14 @@ p {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 280px;
   max-width: 90vw;
   pointer-events: auto;
   transform: scale(0.9) translateY(-10px);
   opacity: 0;
   transition: transform 0.2s ease, opacity 0.2s ease;
+  min-width: min(280px, 90vw);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
 }
 
 .toast-card.toast-enter {
@@ -3529,13 +3474,13 @@ p {
     background-color: #f5f5f5;
   }
 
-  .add-mileage-form-container {
+  .modal-sheet[open] {
     align-items: center;
   }
 
   .add-mileage-form {
     border-radius: 20px;
-    max-height: 80vh;
+    max-height: 80dvh;
   }
 }
 
@@ -3608,5 +3553,148 @@ p {
   .skeleton-block {
     animation: none;
     background: rgba(0, 0, 0, 0.07);
+  }
+}
+
+/* Keep the action rail stable when titles or system text become large. */
+.item-details-page-header {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
+  max-height: 55%;
+}
+
+.item-details-page-header .details-tabs {
+  flex-shrink: 0;
+}
+
+.app-container:has(.item-details-page-route) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.item-details-page-footer > .btn,
+.item-details-page-footer .item-details-action-primary,
+.item-details-page-footer .mark-replacement-button {
+  height: auto;
+  min-height: var(--control-height-sm);
+  min-width: 0;
+  line-height: var(--lh-normal);
+  white-space: normal;
+}
+
+.item-details-page-footer .item-details-action-primary {
+  flex-direction: column;
+}
+
+.history-note,
+.item-history-note,
+.item-history-mileage,
+.toast-title,
+.toast-subtitle,
+.error-message,
+.item-details-page-subtitle {
+  overflow-wrap: anywhere;
+}
+
+.status-row-detail-status-text,
+.status-row-compact-status-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Portaled tooltips escape list clipping and are clamped to the viewport in JS. */
+.status-info-popover {
+  z-index: 2100;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(280px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  border: 0;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-relaxed);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+:where(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--control-primary-bg);
+  outline-offset: 2px;
+}
+
+/* Fixed rails keep their spacing when users increase text size. */
+.item-details-page-footer .btn,
+.item-details-page-footer .mark-replacement-button {
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+
+.form-header .close-button {
+  align-self: flex-start;
+}
+
+.form-actions > button {
+  min-width: 0;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-height: 450px) {
+  .item-details-page-body,
+  .item-details-page-header-row,
+  .item-details-page-footer {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+.item-details-page-header .details-tabs {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.item-details-page-footer .mark-replacement-button {
+  font-size: 0.9375rem;
+}
+
+.item-details-page-footer,
+.form-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
+
+/* Short screens and large text use one scroll region above the action rail. */
+.item-details-page-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  container-type: size;
+  container-name: item-details;
+}
+
+@container item-details (max-height: 14em) {
+  .item-details-page-header {
+    max-height: none;
+  }
+
+  .item-details-page-header-row {
+    overflow: visible;
+  }
+
+  .item-details-page-body {
+    flex: 0 0 auto;
+    overflow: visible;
   }
 }

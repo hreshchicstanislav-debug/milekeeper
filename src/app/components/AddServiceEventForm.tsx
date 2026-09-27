@@ -1,12 +1,12 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useRef, useEffect } from 'react';
 import { addServiceEvent } from '@/lib/actions/serviceActions';
 import { RU } from '@/lib/copy/ru';
 import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
-import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
-import { modalOpened, modalClosed } from '@/lib/ui/modalOpen';
 
 // Hook for swipe-to-close gesture
 function useSwipeToClose<T extends HTMLElement>(
@@ -223,18 +223,6 @@ export default function AddServiceEventForm({
   // Swipe-to-close gesture
   useSwipeToClose<HTMLFormElement>(formRef, onClose, isOpen);
 
-  // Lock body scroll and register modal when form is open (using refcount manager)
-  useEffect(() => {
-    if (isOpen) {
-      lockScroll('AddServiceEventForm');
-      modalOpened('AddServiceEventForm');
-      return () => {
-        unlockScroll('AddServiceEventForm');
-        modalClosed('AddServiceEventForm');
-      };
-    }
-  }, [isOpen]);
-
   useEffect(() => {
     if (isOpen) {
       // Сбрасываем форму при открытии
@@ -328,7 +316,7 @@ export default function AddServiceEventForm({
   }
 
   return (
-    <div className="add-mileage-form-container">
+    <ModalSheet label={RU.items.markReplacement} onClose={onClose} busy={isSubmitting}>
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -425,7 +413,7 @@ export default function AddServiceEventForm({
           </button>
         </div>
       </form>
-    </div>
+    </ModalSheet>
   );
 }
 

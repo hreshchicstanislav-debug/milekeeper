@@ -1,5 +1,7 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateLatestOdometerEntry } from '@/lib/actions/odometerActions';
@@ -100,7 +102,7 @@ export default function EditLatestMileage({
   }
 
   return (
-    <div className="add-mileage-form-container">
+    <ModalSheet label={RU.history.edit.title} onClose={handleCancel} busy={isSubmitting}>
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -198,7 +200,7 @@ export default function EditLatestMileage({
           </button>
         </div>
       </form>
-    </div>
+    </ModalSheet>
   );
 }
 

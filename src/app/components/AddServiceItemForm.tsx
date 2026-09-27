@@ -1,5 +1,7 @@
 'use client';
 
+import ModalSheet from './ModalSheet';
+
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createServiceItem, updateServiceItem, deleteServiceItem } from '@/lib/actions/serviceActions';
@@ -599,8 +601,9 @@ export default function AddServiceItemForm({
   // Swipe-to-close gesture for delete confirmation
   useSwipeToClose<HTMLDivElement>(deleteConfirmRef, handleDeleteCancel, isOpen && showDeleteConfirm);
 
-  if (!isOpen && mode === 'create') {
-    return (
+  return (
+    <>
+      {mode === 'create' && (
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -608,15 +611,9 @@ export default function AddServiceItemForm({
       >
         {RU.items.addItem}
       </button>
-    );
-  }
-
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div className="add-mileage-form-container">
+      )}
+      {isOpen && (
+    <ModalSheet label={mode === 'edit' ? RU.items.editTitle : RU.items.formTitle} onClose={handleCancel} busy={isSubmitting} dismissOnBackdrop={mode === 'edit'} returnFocusSelector=".add-mileage-button">
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -798,7 +795,7 @@ export default function AddServiceItemForm({
 
       {/* Delete confirmation */}
       {showDeleteConfirm && (
-        <div className="add-mileage-form-container">
+        <ModalSheet label={RU.items.deleteConfirmTitle} onClose={handleDeleteCancel} busy={isSubmitting}>
           <div ref={deleteConfirmRef} className="add-mileage-form">
             <div className="form-header">
               {/* Grabber bar - iOS style */}
@@ -843,9 +840,11 @@ export default function AddServiceItemForm({
               </button>
             </div>
           </div>
-        </div>
+        </ModalSheet>
       )}
-    </div>
+    </ModalSheet>
+      )}
+    </>
   );
 }
 
