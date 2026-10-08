@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { COOKIE_AT, COOKIE_RT } from './authCookieConfig';
+import { AuthenticationRequiredError, AuthenticationUnavailableError, classifyAuthFailure } from '@/lib/auth/authFailure';
 
 function getEnv() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -64,7 +65,7 @@ export const getRlsClientAndUserId = cache(async () => {
   const refreshToken = c.get(COOKIE_RT)?.value ?? null;
 
   if (!accessToken || !refreshToken) {
-    throw new Error('Not authenticated');
+    throw new AuthenticationRequiredError();
   }
 
   const supabase = createClient(url, anonKey, {
@@ -86,8 +87,19 @@ export const getRlsClientAndUserId = cache(async () => {
     refresh_token: refreshToken,
   });
 
-  if (error || !data.session || !data.user) {
-    throw new Error('Not authenticated');
+  if (error) {
+    const kind = classifyAuthFailure(error);
+    // getUser's explicit JWT rejection is definitive; transport/rate limits are not.
+    if (kind === 'invalid' || (kind === 'unexpected' && (
+      error.code === 'bad_jwt' || error.code === 'jwt_expired' || error.code === 'invalid_jwt' ||
+      error.name === 'AuthSessionMissingError'
+    ))) {
+      throw new AuthenticationRequiredError();
+    }
+    throw new AuthenticationUnavailableError(kind);
+  }
+  if (!data.session || !data.user) {
+    throw new AuthenticationRequiredError();
   }
 
   if (data.session.refresh_token !== refreshToken) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
 import { RU } from '@/lib/copy/ru';
+import { getBrowserSession } from '@/lib/auth/browserSession';
 
 const HIDDEN_PATHS = new Set<string>(['/login', '/auth/callback']);
 
@@ -30,6 +31,7 @@ export default function TopBreadcrumbsBar() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const confirmRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function TopBreadcrumbsBar() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!confirmOpen) return;
+    if (!confirmOpen || isSigningOut || logoutError) return;
 
     const onClickOutside = (event: MouseEvent) => {
       if (!(event.target instanceof Node)) return;
@@ -76,7 +78,7 @@ export default function TopBreadcrumbsBar() {
       document.removeEventListener('mousedown', onClickOutside);
       document.removeEventListener('keydown', onEscape);
     };
-  }, [confirmOpen]);
+  }, [confirmOpen, isSigningOut, logoutError]);
 
   if (!pathname || HIDDEN_PATHS.has(pathname)) {
     return null;
@@ -86,25 +88,30 @@ export default function TopBreadcrumbsBar() {
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
+    setLogoutError(null);
     try {
-      await supabase.auth.signOut();
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const manager = getBrowserSession();
+      if (await manager.logout()) {
+        setConfirmOpen(false);
+        router.replace('/login');
+      } else {
+        setLogoutError(manager.state.message ?? 'Не удалось завершить выход. Повторите попытку.');
+      }
     } finally {
-      setConfirmOpen(false);
       setIsSigningOut(false);
-      router.replace('/login');
     }
   };
 
   return (
     <div className="top-breadcrumbs-bar" aria-label="Навигация">
       <div className="top-breadcrumbs-path">{breadcrumbText}</div>
-      {isAuthed && (
+      {(isAuthed || confirmOpen) && (
         <div className="top-breadcrumbs-logout" ref={confirmRef}>
           <button
             type="button"
             className="top-breadcrumbs-logout-trigger"
             onClick={() => setConfirmOpen((prev) => !prev)}
+            disabled={isSigningOut || !!logoutError}
             aria-label="Выйти"
             aria-expanded={confirmOpen}
             aria-haspopup="dialog"
@@ -114,12 +121,13 @@ export default function TopBreadcrumbsBar() {
           {confirmOpen && (
             <div className="top-breadcrumbs-logout-confirm" role="dialog" aria-label="Подтверждение выхода">
               <div className="top-breadcrumbs-logout-confirm-title">Выйти?</div>
+              {logoutError && <div role="alert">{logoutError}</div>}
               <div className="top-breadcrumbs-logout-confirm-actions">
                 <button
                   type="button"
                   className="top-breadcrumbs-confirm-cancel"
                   onClick={() => setConfirmOpen(false)}
-                  disabled={isSigningOut}
+                  disabled={isSigningOut || !!logoutError}
                 >
                   Отмена
                 </button>

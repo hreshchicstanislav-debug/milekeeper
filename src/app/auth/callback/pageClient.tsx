@@ -1,80 +1,65 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
-import { postSessionSync } from '@/lib/auth/sessionSync';
+import { getBrowserSession } from '@/lib/auth/browserSession';
 
 export default function AuthCallbackClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const code = searchParams.get('code');
+  const oauthError = searchParams.get('error');
   const [errorText, setErrorText] = useState<string | null>(null);
-
+  const [busy, setBusy] = useState(true);
+  const [attempt, setAttempt] = useState(0);
   const supabase = useMemo(() => createBrowserClient(), []);
+  const completion = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
+    let mounted = true;
     const run = async () => {
+      setBusy(true);
+      setErrorText(null);
       try {
-        const code = searchParams.get('code');
-        const error = searchParams.get('error');
-
-        if (error) {
-          router.replace('/login?error=1');
-          return;
-        }
-
-        if (!code) {
-          // If no code, try existing browser session
-          const { data } = await supabase.auth.getSession();
-          if (data.session) {
-            // Awaited on purpose: the cookies must exist before '/' is rendered
-            // on the server, or middleware would bounce us straight back here.
-            await postSessionSync({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-            });
-            router.replace('/');
-            return;
+        if (oauthError) throw new Error('Google не подтвердил вход. Повторите вход.');
+        // One promise per callback mount: React StrictMode and manual retry must
+        // never exchange the same one-use OAuth code twice. SDK initialization
+        // may already have completed the URL exchange, so read that session first.
+        completion.current ??= (async () => {
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            completion.current = null; // getSession did not consume an OAuth code; manual retry is safe.
+            throw new Error('Не удалось получить сессию. Повторите попытку.');
           }
-          router.replace('/login?error=1');
-          return;
-        }
-
-        // PKCE exchange must happen in the browser (uses stored code verifier)
-        const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) throw exchangeError;
-
-        const session = exchangeData.session;
-        if (!session) {
-          router.replace('/login?error=1');
-          return;
-        }
-
-        await postSessionSync({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        });
-
-        router.replace('/');
-      } catch (e) {
-        setErrorText(e instanceof Error ? e.message : String(e));
-        router.replace('/login?error=1');
-      }
+          if (data.session) return;
+          if (!code) throw new Error('Сессия входа отсутствует. Повторите вход.');
+          const result = await supabase.auth.exchangeCodeForSession(code);
+          if (result.error || !result.data.session) throw new Error('Не удалось завершить вход через Google. Повторите вход.');
+        })();
+        await completion.current;
+        const manager = getBrowserSession();
+        const ok = await manager.synchronize(true);
+        if (!mounted) return;
+        if (ok) router.replace('/');
+        else setErrorText(manager.state.message ?? 'Не удалось синхронизировать сессию. Повторите вход.');
+      } catch (error) {
+        if (mounted) setErrorText(error instanceof Error ? error.message : 'Не удалось завершить вход.');
+      } finally { if (mounted) setBusy(false); }
     };
-
-    run();
-  }, [router, searchParams, supabase]);
+    void run();
+    return () => { mounted = false; };
+  }, [router, code, oauthError, supabase, attempt]);
 
   return (
     <div style={{ padding: 'var(--sp-5, 1.5rem)' }}>
       <h1 style={{ fontSize: '1.25rem', marginBottom: 'var(--sp-3, 0.75rem)' }}>Завершаем вход…</h1>
-      {errorText && (
-        <div style={{ color: '#b00020', whiteSpace: 'pre-wrap' }}>
-          {errorText}
-        </div>
-      )}
-      {!errorText && <div style={{ color: 'rgba(0,0,0,0.6)' }}>Пожалуйста, подождите.</div>}
+      {errorText && <div role="alert" style={{ color: '#b00020', whiteSpace: 'pre-wrap' }}>{errorText}</div>}
+      {busy && <div style={{ color: 'rgba(0,0,0,0.6)' }}>Пожалуйста, подождите.</div>}
+      {errorText && !busy && <>
+        <button type="button" onClick={() => setAttempt(value => value + 1)}>Повторить</button>
+        {' '}<a href="/login">Вернуться ко входу</a>
+      </>}
     </div>
   );
 }
-

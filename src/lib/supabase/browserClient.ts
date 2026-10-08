@@ -1,10 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { sessionSafeFetch } from '@/lib/auth/sessionSafeFetch';
+
+let browserClient: SupabaseClient | undefined;
 
 /**
  * Creates a Supabase client for browser/client-side usage.
  * Uses NEXT_PUBLIC_ prefixed environment variables that are safe to expose to the client.
  */
 export function createBrowserClient() {
+  if (typeof window !== 'undefined' && browserClient) return browserClient;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -22,6 +26,8 @@ export function createBrowserClient() {
     );
   }
 
-  return createClient(url, anonKey);
+  const client = createClient(url, anonKey, { global: { fetch: sessionSafeFetch(url) } });
+  // Never share a client's auth storage between server requests/SSR users.
+  if (typeof window !== 'undefined') browserClient = client;
+  return client;
 }
-

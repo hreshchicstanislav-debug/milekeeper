@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { nextSyncAction, postSessionSync, postSessionLogout } from '../sessionSync';
 
-const ok = () => new Response('{}', { status: 200 });
+const ok = () => new Response(JSON.stringify({ ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' } }), { status: 200 });
 const badRequest = () => new Response('{}', { status: 400 });
 const serverError = () => new Response('{}', { status: 500 });
 
@@ -45,7 +45,7 @@ describe('postSessionSync', () => {
 
   it('posts the tokens with keepalive and reports success', async () => {
     const fetchImpl = vi.fn(async () => ok());
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(true);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' } });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
@@ -60,31 +60,31 @@ describe('postSessionSync', () => {
       .fn()
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce(ok());
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(true);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' } });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('retries once after a 5xx', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(serverError()).mockResolvedValueOnce(ok());
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(true);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' } });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('reports failure, not success, when both attempts fail', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('offline'));
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(false);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: false, status: 503 });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a 4xx, which is a definitive answer', async () => {
     const fetchImpl = vi.fn(async () => badRequest());
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(false);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: false, status: 400 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('never retries more than once, so a dead server cannot cause a storm', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(serverError());
-    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toBe(false);
+    await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: false, status: 500 });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
@@ -102,4 +102,19 @@ describe('postSessionLogout', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('offline'));
     await expect(postSessionLogout(fetchImpl as unknown as typeof fetch)).resolves.toBe(false);
   });
+});
+
+it('does not automatically retry 429', async () => {
+  const fetchImpl = vi.fn(async () => new Response('{}', { status: 429 }));
+  expect(await postSessionSync({ access_token: 'at', refresh_token: 'rt' }, fetchImpl)).toEqual({ ok: false, status: 429 });
+  expect(fetchImpl).toHaveBeenCalledOnce();
+});
+it('does not treat a 200 with malformed JSON/session as synchronization success', async () => {
+  for (const body of ['{}', '{', '{"ok":false}', '{"ok":true}']) {
+    const fetchImpl = vi.fn(async () => new Response(body));
+    expect((await postSessionSync({ access_token: 'at', refresh_token: 'rt' }, fetchImpl)).ok).toBe(false);
+  }
+});
+it('requires confirmation from logout, not just HTTP 200', async () => {
+  expect(await postSessionLogout(vi.fn(async () => new Response('{}')))).toBe(false);
 });

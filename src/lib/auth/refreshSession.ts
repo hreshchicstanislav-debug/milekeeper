@@ -15,9 +15,12 @@
  * outage must NOT sign users out, only a genuine refresh-token rejection may.
  */
 
+import { classifyAuthFailure, type AuthFailureKind } from './authFailure';
+
 export interface RefreshedSession {
   access_token: string;
   refresh_token: string;
+  user?: { id: string };
 }
 
 export type RefreshResult =
@@ -26,7 +29,7 @@ export type RefreshResult =
   /** Supabase rejected the refresh token. The session is gone; sign the user out. */
   | { status: 'invalid' }
   /** Network/5xx/transport problem. Session validity is unknown — keep the cookies. */
-  | { status: 'error' };
+  | { status: 'error'; kind: AuthFailureKind };
 
 export interface RefreshOptions {
   url: string;
@@ -50,31 +53,31 @@ export async function refreshAccessToken(
       },
       body: JSON.stringify({ refresh_token: refreshToken }),
       cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
     });
   } catch {
     // Transport failure — we cannot conclude anything about the session.
-    return { status: 'error' };
+    return { status: 'error', kind: 'network' };
   }
 
   if (!response.ok) {
-    // 4xx from GoTrue means the refresh token really is unusable
-    // (expired, already-used beyond the reuse window, or session terminated).
-    // 5xx means Supabase is unhappy, not the user.
-    return response.status >= 400 && response.status < 500
-      ? { status: 'invalid' }
-      : { status: 'error' };
+    const body = await response.json().catch(() => null);
+    const kind = classifyAuthFailure({ status: response.status, code: body?.code ?? body?.error_code ?? body?.error });
+    return kind === 'invalid' ? { status: 'invalid' } : { status: 'error', kind };
   }
 
   try {
     const body = await response.json();
-    if (typeof body?.access_token !== 'string' || typeof body?.refresh_token !== 'string') {
-      return { status: 'error' };
+    if (!body?.access_token || typeof body.access_token !== 'string' ||
+        !body?.refresh_token || typeof body.refresh_token !== 'string') {
+      return { status: 'error', kind: 'unexpected' };
     }
     return {
       status: 'refreshed',
-      session: { access_token: body.access_token, refresh_token: body.refresh_token },
+      session: { access_token: body.access_token, refresh_token: body.refresh_token,
+        ...(typeof body.user?.id === 'string' ? { user: { id: body.user.id } } : {}) },
     };
   } catch {
-    return { status: 'error' };
+    return { status: 'error', kind: 'unexpected' };
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRlsClientAndUserId } from '@/lib/supabase/rlsServerClient';
 import type { ServiceEvent } from '@/lib/db/types';
+import { AuthenticationRequiredError, AuthenticationUnavailableError } from '@/lib/auth/authFailure';
 
 /**
  * GET /api/service-events?itemId=...&limit=10
@@ -68,8 +69,9 @@ export async function GET(request: NextRequest) {
         ok: false,
         error: err instanceof Error ? err.message : 'Internal server error',
       },
-      { status: 500 }
+      { status: err instanceof AuthenticationRequiredError ? 401 :
+          err instanceof AuthenticationUnavailableError ? (err.kind === 'rate-limit' ? 429 : 503) : 500,
+        headers: { 'Cache-Control': 'no-store' } }
     );
   }
 }
-

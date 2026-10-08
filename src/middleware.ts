@@ -12,7 +12,8 @@ import { refreshAccessToken } from '@/lib/auth/refreshSession';
 /**
  * Auth request boundary.
  *
- * This is the only place in the app where a refresh can be *persisted*:
+ * This boundary persists refreshes before server rendering (the auth sync API
+ * also persists sessions received from the browser):
  * Server Components cannot modify response cookies, so a refresh performed
  * during an RSC render is necessarily thrown away. Doing the refresh here
  * instead lets us write the rotated pair to both:
@@ -114,10 +115,14 @@ export async function middleware(request: NextRequest) {
   }
 
   if (result.status === 'error') {
-    // Supabase is unreachable or erroring. The session may well still be valid,
-    // so keep the cookies and let the request through rather than signing the
-    // user out over an outage.
-    return withNoStore(NextResponse.next());
+    // Do not render with expired credentials: an RSC auth failure could bounce
+    // to login while the browser still has a session, creating a redirect loop.
+    if (devGuest) return withNoStore(NextResponse.next());
+    return withNoStore(new NextResponse(
+      'Не удалось обновить сессию. Пожалуйста, повторите загрузку страницы позже.',
+      { status: result.kind === 'rate-limit' ? 429 : 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+    ));
   }
 
   const { access_token, refresh_token } = result.session;

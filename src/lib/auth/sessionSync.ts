@@ -1,95 +1,42 @@
-/**
- * Browser → server session sync.
- *
- * The browser owns the Supabase session (localStorage, rotated by auth-js);
- * the server reads it from httpOnly cookies. This module is the single bridge
- * between the two, and the decision logic is kept pure so it can be unit
- * tested without mounting a React tree.
- *
- * The important invariant: a token is only ever recorded as "synced" after the
- * server has confirmed it with a 2xx. A dropped POST must leave the state
- * retryable, because a cookie that silently falls two refresh-token
- * generations behind is what terminates the whole Supabase session.
- */
+import type { SessionTokens } from './validateSession';
 
-export type SyncedState =
-  | { kind: 'session'; accessToken: string }
-  | { kind: 'signed-out' }
-  | null;
-
-export type SyncAction = 'sync' | 'logout' | 'none';
-
-/**
- * Decide whether the current session still needs to be pushed to the server.
- *
- * `synced` is the last state *confirmed* by the server, never merely attempted.
- */
-export function nextSyncAction(
-  synced: SyncedState,
-  accessToken: string | null | undefined
-): SyncAction {
-  if (!accessToken) {
-    return synced?.kind === 'signed-out' ? 'none' : 'logout';
-  }
-  if (synced?.kind === 'session' && synced.accessToken === accessToken) {
-    return 'none';
-  }
-  return 'sync';
+export type SyncedState = { kind: 'session'; accessToken: string } | { kind: 'signed-out' } | null;
+export function nextSyncAction(synced: SyncedState, accessToken: string | null | undefined): 'sync' | 'logout' | 'none' {
+  if (!accessToken) return synced?.kind === 'signed-out' ? 'none' : 'logout';
+  return synced?.kind === 'session' && synced.accessToken === accessToken ? 'none' : 'sync';
 }
+export type SessionSyncResult = { ok: true; session: SessionTokens } | { ok: false; status: number };
 
-/**
- * POST once, and retry exactly once on a transient failure.
- *
- * A 4xx is a definitive answer and is never retried; anything else (network
- * error, 5xx) gets one more attempt and then gives up so the caller can retry
- * on the next auth event.
- */
-async function postOnceWithRetry(
-  input: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch
-): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+/** One bounded retry for network/5xx; never retry rate limiting automatically. */
+async function post(input: string, body: object, fetchImpl: typeof fetch): Promise<{ status: number; body: unknown }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetchImpl(input, init);
-      if (response.ok) {
-        return true;
-      }
-      if (response.status >= 400 && response.status < 500) {
-        return false;
-      }
+      const response = await fetchImpl(input, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), credentials: 'same-origin', keepalive: true,
+        cache: 'no-store', signal: AbortSignal.timeout(10000),
+      });
+      if (response.status >= 500 && attempt === 0) continue;
+      return { status: response.status, body: await response.json().catch(() => null) };
     } catch {
-      // transient — fall through to the second attempt
+      if (attempt === 1) return { status: 503, body: null };
     }
   }
-  return false;
+  return { status: 503, body: null };
 }
 
-/**
- * Push the session to the httpOnly cookies.
- *
- * `keepalive` lets the request survive a navigation or the tab being
- * backgrounded — the exact moments an iOS standalone web app used to lose it.
- *
- * @returns true only when the server confirmed the write.
- */
-export function postSessionSync(
-  tokens: { access_token: string; refresh_token: string },
-  fetchImpl: typeof fetch = fetch
-): Promise<boolean> {
-  return postOnceWithRetry(
-    '/api/auth/sync',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tokens),
-      keepalive: true,
-    },
-    fetchImpl
-  );
+export async function postSessionSync(tokens: SessionTokens, fetchImpl: typeof fetch = fetch): Promise<SessionSyncResult> {
+  const response = await post('/api/auth/sync', tokens, fetchImpl);
+  const body = response.body as { ok?: boolean; session?: SessionTokens } | null;
+  if (response.status === 200 && body?.ok === true &&
+      typeof body.session?.access_token === 'string' && body.session.access_token &&
+      typeof body.session.refresh_token === 'string' && body.session.refresh_token) {
+    return { ok: true, session: body.session };
+  }
+  return { ok: false, status: response.status === 200 ? 503 : response.status };
 }
 
-/** Clear the httpOnly cookies. @returns true only when the server confirmed it. */
-export function postSessionLogout(fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  return postOnceWithRetry('/api/auth/logout', { method: 'POST', keepalive: true }, fetchImpl);
+export async function postSessionLogout(fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  const response = await post('/api/auth/logout', {}, fetchImpl);
+  return response.status === 200 && (response.body as { ok?: boolean } | null)?.ok === true;
 }

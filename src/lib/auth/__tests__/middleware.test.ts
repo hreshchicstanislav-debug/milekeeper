@@ -174,7 +174,7 @@ describe('middleware — invalid refresh token', () => {
   });
 
   it('does not reach page rendering, so no runtime "Not authenticated" screen', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 401 }));
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'session_not_found' }), { status: 401 }));
     const response = await middleware(
       request('/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-dead' })
     );
@@ -190,7 +190,7 @@ describe('middleware — Supabase unavailable', () => {
       request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(responseCookie(response, 'mk_sb_at')).toBeUndefined();
   });
 
@@ -201,7 +201,7 @@ describe('middleware — Supabase unavailable', () => {
       request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(responseCookie(response, 'mk_sb_at')).toBeUndefined();
   });
 });
@@ -220,7 +220,7 @@ describe('middleware — dev-guest mode', () => {
   });
 
   it('drops a dead session but still renders the page', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 400 }));
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'refresh_token_not_found' }), { status: 400 }));
 
     const response = await middleware(
       request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-dead' })
@@ -322,4 +322,16 @@ describe('middleware — PWA assets are not reachable through isPublicPath', () 
       expect(response.status).toBe(307);
     }
   );
+});
+
+describe('middleware — non-destructive error handling', () => {
+  it.each([429, 408, 400, 401])('preserves both cookies and does not redirect for ambiguous/transient HTTP %s', async status => {
+    fetchMock.mockResolvedValue(new Response('{}', { status }));
+    const req = request('/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' });
+    const response = await middleware(req);
+    expect(response.status).toBe(status === 429 ? 429 : 503);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(req.cookies.get('mk_sb_rt')?.value).toBe('rt-0');
+  });
 });

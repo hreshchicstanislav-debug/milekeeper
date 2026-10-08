@@ -149,7 +149,7 @@ describe('getRlsClientAndUserId — failures are not swallowed', () => {
   it('rejects when setSession returns an error', async () => {
     setSession.mockResolvedValue({
       data: { user: null, session: null },
-      error: { message: 'invalid claim: missing sub claim' },
+      error: { message: 'invalid claim: missing sub claim', code: 'bad_jwt', status: 401 },
     });
 
     await expect(getRlsClientAndUserId()).rejects.toThrow('Not authenticated');
@@ -186,4 +186,9 @@ describe('getRlsClientAndUserId — in-render refresh fallback', () => {
     expect(userId).toBe('user-123');
     warn.mockRestore();
   });
+});
+
+it.each([429, 503, 0])('does not misclassify temporary auth HTTP %s as missing authentication', async status => {
+  setSession.mockResolvedValue({ data: { user: null, session: null }, error: { status, code: 'unexpected_failure' } });
+  await expect(getRlsClientAndUserId()).rejects.toThrow(status === 429 ? 'Authentication rate limit' : 'Authentication temporarily unavailable');
 });

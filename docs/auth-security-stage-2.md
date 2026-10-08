@@ -1,0 +1,271 @@
+# Этап 2: авторизация и пользовательские сессии
+
+Дата: 08.10.2026. Ветка: `codex/auth-security-stage-2`.
+
+**Вердикт:** исправления реализованы, локальные автоматические проверки и production
+build проходят. Этапы 1 и 2 совместимы по проверенному коду и локальным DB-тестам.
+Перед выпуском требуется проверить реальный Google OAuth и установленную PWA
+в тестовом окружении. Полностью подтверждённую production-готовность без этих
+проверок заявлять нельзя. Deployment не выполнялся.
+
+## Сохранность этапа 1 и границы работы
+
+В начале работы ветка `codex/database-security-stage-1` содержала 12 незакоммиченных
+файлов завершённого этапа 1. Они сохранены checkpoint-коммитом `7705929`
+(`fix(db): complete database security stage 1`). Новая ветка создана поверх него.
+Переключения на старый main, merge в main и push не было.
+
+Миграции, DB security runner, проверка владельца в `serviceActions.ts` и отчёт
+этапа 1 не изменены. Это дополнительно проверено Git diff относительно checkpoint.
+Этап 1 уже применён к production согласно его отчёту; повторное применение не нужно.
+
+В этапе 2 production Supabase не изменялся. Новые миграции, изменения RLS, Google
+provider, email/password регистрация и deployment отсутствуют. Пользовательские
+данные не читались из production, не изменялись и не удалялись. Этап 3 не начат.
+После повторных проверок изменения этапа 2 закреплены checkpoint-коммитом
+`fix(auth): checkpoint session security stage 2` в этой же ветке. Push, merge
+и deployment при создании checkpoint не выполнялись.
+
+## Исправленные проблемы
+
+- HTTP 429, сетевые сбои, 408, 5xx и неизвестные ошибки больше не считаются
+  доказательством недействительного refresh token. Middleware сохраняет cookies.
+- Callback и AuthGate разрешают переход на главную только после подтверждённой
+  серверной синхронизации и принятия обновлённых токенов браузерным SDK.
+- `/api/auth/sync` проверяет запрос и обе части сессии через Supabase Auth;
+  произвольные непустые строки больше не записываются в cookies.
+- `/api/auth/logout` защищён от межсайтовой очистки cookies и некорректных запросов.
+- Выход учитывает ошибки Supabase, фактическое отсутствие браузерной сессии и
+  подтверждение очистки cookies. Частичный сбой не приводит к заявлению об успехе.
+- `/api/service-events` возвращает 401 при отсутствии авторизации вместо 500.
+  Ошибки доступности Auth возвращаются как 503, rate limiting — как 429.
+- Исправлена дополнительная подтверждённая проблема установленного auth-js 2.90.1:
+  браузерный refresh удалял localStorage-сессию при 429 и некоторых временных ошибках.
+
+## Вход и синхронизация
+
+Google OAuth и существующие redirect URLs сохранены. Настройки `flowType` не
+менялись: текущий браузерный клиент использует implicit flow по умолчанию.
+Callback также сохраняет обработку PKCE `code`, если такой callback приходит.
+Миграция приложения на `@supabase/ssr` в этот этап не входит.
+
+Браузер использует один Supabase client. Singleton создаётся только в браузере;
+SSR и серверные клиенты не разделяют пользовательское auth-состояние между запросами.
+Callback сначала читает сессию после инициализации SDK, который может уже обработать
+OAuth URL. Если сессии нет и есть `code`, выполняется обмен кода. Один promise
+предотвращает повторный обмен одноразового кода при StrictMode и повторе cookie sync.
+Временную ошибку чтения сессии можно повторить явно; неудавшийся обмен одноразового
+кода требует нового входа по ссылке на login.
+
+Последовательность синхронизации:
+
+1. Браузер получает текущую пару из SDK и отправляет JSON same-origin POST.
+2. Сервер обращается к `GET /auth/v1/user` с access token. Это удалённая проверка,
+   а не доверие локально декодированному JWT.
+3. Сервер обменивает opaque refresh token через Supabase Auth. У свежего access
+   token один лишь `setSession()` не проверил бы действительность refresh token.
+4. Проверяются совпадение user id и `session_id` исходного проверенного JWT и
+   сессии, выданной Auth. Токены разных пользователей или разных сессий одного
+   пользователя не принимаются.
+5. Обновлённая пара записывается в httpOnly cookies и возвращается в JSON
+   `{ ok: true, session: { access_token, refresh_token } }` с `private, no-store`.
+6. Браузер принимает **эту же пару** через SDK `setSession()`. Только после успеха
+   состояние становится `authed` и разрешается переход.
+
+Если SDK не принял пару после записи cookies, она сохраняется в памяти для явного
+повтора принятия без очередной ротации старого refresh token. Перед принятием
+проверяется, что браузерная сессия не сменилась за время запроса. Старый ответ не
+перезаписывает более новый вход. При смене сессии показывается ошибка с повтором.
+
+Общая очередь объединяет callback, AuthGate и выход, исключая конкурирующие записи
+cookies внутри вкладки. Между вкладками используется отдельный Web Lock и маркер
+в localStorage: SHA-256 пары и время, без самих токенов, срок действия 10 секунд.
+Он предотвращает повторную ротацию из-за SDK broadcast. Это лишь подсказка для
+дедупликации, не основание для серверной авторизации. Первая синхронизация каждой
+вкладки всегда обращается к защищённому endpoint. При недоступном хранилище
+координации синхронизация останавливается с видимой ошибкой до SDK broadcast.
+
+Auth-события обрабатываются после завершения синхронного callback SDK, чтобы не
+вызвать deadlock его storage lock. SDK-событие после собственного `setSession()`
+не запускает новый сетевой sync. Повтор события с той же отклонённой парой не
+запускает бесконечные попытки. Новая пара или кнопка «Повторить» разрешают попытку.
+
+Ошибка синхронизации отображается на callback или в AuthGate. Она не отправляет
+пользователя автоматически на главную или login. Отсутствие браузерной сессии
+само по себе не удаляет серверные cookies. Redirects после подтверждённого входа
+или отсутствия сессии дедуплицируются; на login анонимный пользователь остаётся.
+
+## Временные ошибки, 429 и истечение сессии
+
+`refreshAccessToken()` классифицирует ответ по HTTP status и известным кодам Auth.
+Сначала учитываются 429, 408 и 5xx; неизвестные 400/401 также сохраняют сессию.
+Удаление cookies middleware разрешено только при подтверждённом отказе refresh
+(`refresh_token_not_found`, `refresh_token_already_used`, `session_expired` и др.).
+Если token истёк, но Auth недоступен, middleware возвращает 503, при rate limit —
+429, без `Set-Cookie` и redirect. Это предотвращает дальнейший render с просроченным
+токеном и перенаправление на login из-за временной ошибки. Исключение для dev guest
+сохранено. Серверный RLS client также отличает отсутствие авторизации от сбоя Auth.
+
+В браузерном SDK через штатную настройку `global.fetch` подключён transport adapter.
+Он касается классификации **только refresh exchange**: временный upstream ответ
+передаётся auth-js как retryable 503, поскольку версия 2.90.1 иначе удаляет storage.
+Исходный 429 сохраняется в фиксированном сообщении и распознаётся как rate limiting.
+Это не успешный ответ и не обход серверной проверки. Известные отказы credentials
+передаются SDK без подмены. Реальные GET user, logout, OAuth и запросы данных не
+получают такой подмены статуса.
+
+Adapter вводит паузу минимум 30 секунд, учитывая `Retry-After`. Встроенные попытки
+SDK во время паузы получают локальный retryable ответ и не создают новые запросы
+Supabase. Внутренний backoff SDK может занимать около 30 секунд. Auth transport
+имеет timeout 10 секунд; запросы PostgREST этим timeout не меняются.
+
+POST bridge повторяет network/5xx ровно один раз, с timeout 10 секунд на запрос.
+400/401/403/415/429 не повторяются автоматически. Повтор запроса после потерянного
+ответа опирается на стандартную обработку родительского refresh token Supabase;
+настройки reuse detection/reuse interval не менялись.
+
+## Защита endpoints
+
+Оба endpoint принимают только same-origin POST с `application/json`:
+
+- Origin должен точно совпасть с protocol и фактическим Host запроса, включая порт;
+  отсутствующий Origin, `null`, чужой домен и поддомен отклоняются с 403.
+  `X-Forwarded-Host` не используется как allowlist.
+- `Sec-Fetch-Site`, если присутствует, должен быть `same-origin`.
+- Неверный Content-Type возвращает 415; JSON разбирается с ограничением тела 32 KiB.
+  Oversize возвращает 413; malformed JSON, массивы, примитивы и неверные поля — 400.
+- Sync принимает только два строковых token-поля с ограничением длины;
+  logout — пустой JSON object. Cookies не меняются при отказе проверки sync.
+- Все ответы auth endpoints запрещают кеширование. Существующие cookie attributes
+  HttpOnly, Secure, SameSite=Lax, path=/ и срок сохраняются.
+
+Проверка Origin учитывает нормализацию loopback hostname в NextURL: реальные
+запросы на `127.0.0.1` не отклоняются из-за его преобразования в `localhost`.
+Google callback остаётся страницей OAuth; она вызывает same-origin fetch уже из
+приложения. Запрос Google напрямую в `/api/auth/sync` не требуется.
+
+Service role не добавлен в клиентский код или auth bridge. Авторизация данных
+продолжает опираться на Supabase Auth и существующие RLS/FK этапа 1.
+
+## Выход
+
+Выйти можно только после успешного `signOut()` Supabase, подтверждения отсутствия
+браузерной сессии и успешного ответа `/api/auth/logout` с `{ ok: true }`.
+При ошибке Supabase cookies сохраняются, пользователь видит отказ. Если Supabase
+завершил сессию, но cookie clear не подтверждён, диалог остаётся с сообщением о
+частичном выходе и кнопкой повтора. AuthGate в этом состоянии не перенаправляет и
+не пересоздаёт cookies из старых событий. Запоздавший sync завершается перед clear.
+
+Повторный `SIGNED_OUT` после уже подтверждённого выхода не очищает cookies снова.
+Для внешнего signout/истечения сессии выполняется cookie clear; его ошибку показывает
+AuthGate с повтором. Перед clear проверяется текущее состояние SDK: старое событие
+`SIGNED_OUT` не очищает более новый вход. Существующий глобальный scope `signOut()`
+сохранён. Endpoint logout выполняет только cookie clear, удалённый signout — SDK.
+
+## Тесты и результаты
+
+Новые проверки покрывают реальную классификацию refresh, сохранение storage в
+настоящем SDK, защищённые route handlers, координацию сессии и React-компоненты.
+Для React effects/StrictMode добавлены только devDependencies `react-test-renderer`
+19.2.3 и его types 19.1.0. Renderer выводит предупреждение о deprecated API;
+это не полноценный browser E2E runner.
+
+Покрыты успешная/отказавшая синхронизация, неверные и несовместимые токены, чужой
+Origin, неправильный Content-Type/JSON, oversize, 429, сеть, 5xx, истечение,
+успешный и частичный выход, сохранение активной сессии после отказа выхода,
+повтор одноразового OAuth code, отсутствие redirect loops, гонки sync/logout,
+новый вход во время старого sync и обмен событиями двух вкладок.
+
+| Проверка | Этап 1 | Этап 2 |
+| --- | --- | --- |
+| `npm test` | 191 тест, 17 файлов | 328 тестов, 24 файла — успешно |
+| `npm run test:db-security` | Успешно | Успешно, 45 SQL assertions и проверка отката |
+| `tsc --noEmit --incremental false` | 14 прежних ошибок | Те же 14; полный вывод до/после совпадает |
+| `npm run lint` | `next lint` не поддерживается | Тот же отказ: invalid project directory `lint` |
+| `npm run build` | Успешно | Успешно, без отключения type checking |
+| Локальный HTTP smoke production-сборки | — | 10 проверок — успешно |
+| `git diff --check` | — | Успешно |
+
+Предупреждение о deprecated `middleware` convention сохраняется. Старые пять
+тестовых файлов с ошибками типов и конфигурация линтера не исправлялись. Успех
+build не подменяет отдельный TypeScript-check; lint не был фактически выполнен.
+
+HTTP smoke запускался на loopback production-сервере с Supabase URL, заменённым
+на недоступный тестовый адрес. Он подтвердил реальные 403/415/400 auth endpoints,
+успешный cookie clear, 401 service-events без auth, доступность PWA manifest/icon
+и сохранение cookies/отсутствие redirect при временной недоступности Auth. Сервер
+после проверки остановлен. Production credentials для запросов smoke не использованы.
+
+## Изменённые файлы
+
+Прикладной код:
+
+- `src/lib/auth/authFailure.ts`, `refreshSession.ts` — классификация ошибок.
+- `src/lib/auth/authRequest.ts`, `validateSession.ts` — защита HTTP и проверка пары.
+- `src/lib/auth/sessionSync.ts` — подтверждённые ответы bridge и bounded retry.
+- `src/lib/auth/browserSession.ts`, `sessionTabCoordination.ts` — синхронизация,
+  принятие ротации, состояние выхода и координация вкладок.
+- `src/lib/auth/sessionSafeFetch.ts` — сохранение storage при временном refresh SDK.
+- `src/lib/supabase/browserClient.ts` — браузерный singleton и fetch adapter.
+- `src/lib/supabase/rlsServerClient.ts` — отдельные auth/availability ошибки.
+- `src/middleware.ts` — сохранение cookies и временный ответ при сбое refresh.
+- `src/app/api/auth/sync/route.ts`, `logout/route.ts` — защищённые endpoints.
+- `src/app/api/service-events/route.ts` — корректные auth status codes.
+- `src/app/auth/callback/pageClient.tsx` — ожидание sync, ошибки, явный повтор.
+- `src/app/components/AuthGate.tsx`, `TopBreadcrumbsBar.tsx` — подтверждённая
+  навигация, ошибки выхода и восстановление после частичного сбоя.
+
+Тесты и документация:
+
+- `src/lib/auth/__tests__/refreshSession.test.ts`, `browserSession.test.ts`,
+  `sessionTabCoordination.test.ts`, `sessionSafeFetch.test.ts` — новые тесты.
+- `src/lib/auth/__tests__/middleware.test.ts`, `sessionSync.test.ts` — дополнены.
+- `src/lib/supabase/__tests__/rlsServerClient.test.ts` — дополнен.
+- `src/app/api/auth/__tests__/routes.test.ts` — новый.
+- `src/app/api/service-events/__tests__/route.test.ts` — новый.
+- `src/app/components/__tests__/authFlows.test.tsx` — новый.
+- `package.json`, `package-lock.json` — только тестовые зависимости.
+- `docs/auth-security-stage-2.md` — этот отчёт.
+
+## Остаточные ограничения и готовность выпуска
+
+1. Реальный Google OAuth, поведение Supabase refresh reuse и cookie storage
+   установленной iOS/Android PWA на реальном HTTPS-домене не проверены end-to-end.
+   Серверные тесты Auth используют mock transport; SDK-тесты используют настоящий
+   auth-js, но тестовый transport/storage. Production проверка не имитировалась.
+2. Dual storage (browser SDK/localStorage + httpOnly cookies) сохранён. Новый sync
+   требует двух серверных вызовов Auth и принятия пары SDK, увеличивая нагрузку
+   относительно прежней непроверенной записи cookies. Rate limiting обрабатывается
+   без удаления сессии. Потерянный ответ может потребовать явного повтора.
+3. Современные браузеры используют Web Locks. Без него marker устраняет обычную
+   broadcast-петлю, но строгую межвкладочную сериализацию не обеспечивает. Реальные
+   многовкладочные/background/PWA сценарии должны пройти проверку в целевых браузерах.
+   Заблокированный localStorage/недоступный Web Crypto приводит к видимой ошибке sync.
+4. Существующий редкий refresh внутри RSC оставлен: rotated token там нельзя записать
+   в response cookies. Основной путь — browser sync/middleware; request-scoped cache
+   RLS client сохранён. Полная замена хранения сессий потребовала бы отдельного
+   архитектурного решения и в этот этап не выполнялась.
+5. Как и в стандартной модели Supabase, signOut отзывает refresh sessions, но ранее
+   выданный access JWT может оставаться пригодным до expiry для прямого Data API.
+   Собственная denylist/система немедленного отзыва JWT не вводилась.
+6. Остаются исходные 14 ошибок TypeScript и неработающий lint script. Технический
+   долг `odometer_entries.source` из этапа 1 также сохранён без новых миграций.
+
+Настраивать Supabase Dashboard для этих изменений **не требуется**. Google provider,
+redirect allowlist, JWT TTL и refresh reuse settings не менялись. Тестовая среда
+для реального OAuth должна уже иметь корректный callback URL в allowlist; если
+её ещё нет, её настройку нужно согласовать отдельно. На reverse proxy должны
+сохраняться реальный Host и HTTPS protocol для same-origin проверки.
+
+Код этапов 1 и 2 можно готовить к совместному deployment из этой ветки после
+проверки реального Google login → sync → protected page → logout, reload, 429/сети
+и работы нескольких вкладок/установленной PWA на staging. Новая DB-миграция для
+этапа 2 не нужна; миграции этапа 1 уже применены. Deployment и следующий этап
+требуют отдельного разрешения пользователя.
+
+Рекомендации, использованные при проверке:
+[Supabase — getUser](https://supabase.com/docs/reference/javascript/auth-getuser),
+[сессии и refresh reuse](https://supabase.com/docs/guides/auth/sessions),
+[server-side advanced guide](https://supabase.com/docs/guides/auth/server-side/advanced-guide).
+Дополнительно проверены исходники установленного auth-js 2.90.1 и его реальное
+поведение в автоматических тестах.
