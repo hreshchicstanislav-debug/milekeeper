@@ -43,6 +43,24 @@ describe('nextSyncAction', () => {
 describe('postSessionSync', () => {
   const tokens = { access_token: 'at', refresh_token: 'rt' };
 
+  it('serializes only the token pair from a full OAuth session, including on retry', async () => {
+    const session = { ...tokens, token_type: 'bearer', expires_in: 3600,
+      expires_at: 9999999999, user: { id: 'user-a' },
+      provider_token: 'synthetic-provider-token'.repeat(2000),
+      provider_refresh_token: 'synthetic-provider-refresh' };
+    const fetchImpl = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(serverError()).mockResolvedValueOnce(ok());
+    expect(await postSessionSync(session, fetchImpl)).toEqual({
+      ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetchImpl.mock.calls) {
+      expect(JSON.parse(init!.body as string)).toEqual(tokens);
+      expect(init!.headers).toEqual({ 'Content-Type': 'application/json' });
+      expect(init!.credentials).toBe('same-origin');
+    }
+  });
+
   it('posts the tokens with keepalive and reports success', async () => {
     const fetchImpl = vi.fn(async () => ok());
     await expect(postSessionSync(tokens, fetchImpl as unknown as typeof fetch)).resolves.toEqual({ ok: true, session: { access_token: 'at-new', refresh_token: 'rt-new' } });

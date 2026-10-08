@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST as sync } from '../sync/route';
 import { POST as logout } from '../logout/route';
+import type { Session } from '@supabase/supabase-js';
+import { BrowserSession } from '@/lib/auth/browserSession';
+import { postSessionSync } from '@/lib/auth/sessionSync';
 
 const jwt = (sid = 'session-a', user = 'user-a') => `e30.${Buffer.from(JSON.stringify({ session_id: sid, sub: user, exp: 9999999999 })).toString('base64url')}.signature`;
 const tokens = { access_token: jwt(), refresh_token: 'rt-a' };
@@ -41,6 +44,50 @@ it('validates both tokens, persists and returns the same rotated pair without ca
   expect(fetchMock).toHaveBeenCalledTimes(2);
   expect(fetchMock.mock.calls[0][0]).toBe('https://auth.test/auth/v1/user');
   expect(fetchMock.mock.calls[1][0]).toBe('https://auth.test/auth/v1/token?grant_type=refresh_token');
+});
+
+it('synchronizes a full SDK OAuth session through the real client serializer and strict route', async () => {
+  let current: Session = {
+    ...tokens, token_type: 'bearer', expires_in: 3600, expires_at: 9999999999,
+    provider_token: 'synthetic-google-token', provider_refresh_token: 'synthetic-google-refresh',
+    user: { id: 'user-a', app_metadata: {}, user_metadata: {}, aud: 'authenticated',
+      created_at: '2026-10-09T00:00:00Z' },
+  };
+  const auth = {
+    getSession: vi.fn(async () => ({ data: { session: current }, error: null })),
+    setSession: vi.fn(async (pair: { access_token: string; refresh_token: string }) => {
+      current = { ...current, ...pair };
+      return { data: { session: current }, error: null };
+    }),
+    signOut: vi.fn(),
+  };
+  let cookiePair: { access_token?: string; refresh_token?: string } | undefined;
+  const transport = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(async (_input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set('Origin', 'https://milekeeper.test');
+    headers.set('Sec-Fetch-Site', 'same-origin');
+    const response = await sync(new NextRequest('https://milekeeper.test/api/auth/sync', {
+      ...init, headers, signal: init?.signal ?? undefined,
+    }));
+    cookiePair = { access_token: response.cookies.get('mk_sb_at')?.value,
+      refresh_token: response.cookies.get('mk_sb_rt')?.value };
+    return response;
+  });
+  const manager = new BrowserSession(auth, pair => postSessionSync(pair, transport));
+  // Callback and AuthGate share one flight; setSession still returns a full SDK Session.
+  expect(await Promise.all([manager.synchronize(true), manager.synchronize()])).toEqual([true, true]);
+  expect(transport).toHaveBeenCalledOnce();
+  expect(JSON.parse(transport.mock.calls[0][1]!.body as string)).toEqual(tokens);
+  expect(fetchMock).toHaveBeenCalledTimes(2); // remote getUser then refresh
+  expect(auth.setSession).toHaveBeenCalledOnce();
+  expect(auth.setSession).toHaveBeenCalledWith(rotated);
+  expect(cookiePair).toEqual(rotated);
+  expect(current.access_token).toBe(rotated.access_token);
+  expect(current.refresh_token).toBe(rotated.refresh_token);
+  expect(manager.state.phase).toBe('authed');
+  expect(auth.signOut).not.toHaveBeenCalled();
+  expect(await manager.synchronize()).toBe(true);
+  expect(transport).toHaveBeenCalledOnce();
 });
 
 for (const [path, handler] of [['sync', sync], ['logout', logout]] as const) {

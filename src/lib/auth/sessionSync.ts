@@ -26,7 +26,11 @@ async function post(input: string, body: object, fetchImpl: typeof fetch): Promi
 }
 
 export async function postSessionSync(tokens: SessionTokens, fetchImpl: typeof fetch = fetch): Promise<SessionSyncResult> {
-  const response = await post('/api/auth/sync', tokens, fetchImpl);
+  // getSession() returns the full SDK Session at runtime; its TypeScript shape
+  // does not strip OAuth/provider fields. Keep the strict endpoint contract.
+  const response = await post('/api/auth/sync', {
+    access_token: tokens.access_token, refresh_token: tokens.refresh_token,
+  }, fetchImpl);
   const body = response.body as { ok?: boolean; session?: SessionTokens } | null;
   if (response.status === 200 && body?.ok === true &&
       typeof body.session?.access_token === 'string' && body.session.access_token &&
