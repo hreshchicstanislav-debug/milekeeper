@@ -1,5 +1,7 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useMemo } from 'react';
 import WheelPickerColumn from './WheelPickerColumn';
 
@@ -16,6 +18,7 @@ export default function WheelPicker({
   days,
   onChange,
 }: WheelPickerProps) {
+  const { t } = useCopy();
   // Generate values arrays
   const yearsValues = useMemo(() => Array.from({ length: 11 }, (_, i) => i), []);
   const monthsValues = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
@@ -39,22 +42,22 @@ export default function WheelPicker({
         values={yearsValues}
         value={years}
         onChange={handleYearsChange}
-        label="Годы"
-        suffix="лет"
+        label={t("Годы")}
+        suffix={t("лет")}
       />
       <WheelPickerColumn
         values={monthsValues}
         value={months}
         onChange={handleMonthsChange}
-        label="Месяцы"
-        suffix="мес."
+        label={t("Месяцы")}
+        suffix={t("мес.")}
       />
       <WheelPickerColumn
         values={daysValues}
         value={days}
         onChange={handleDaysChange}
-        label="Дни"
-        suffix="дн."
+        label={t("Дни")}
+        suffix={t("дн.")}
       />
     </div>
   );

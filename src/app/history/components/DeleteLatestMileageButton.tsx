@@ -1,10 +1,12 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState } from 'react';
 import DeleteLatestMileage from '@/app/components/DeleteLatestMileage';
-import { RU } from '@/lib/copy/ru';
 
 export default function DeleteLatestMileageButton() {
+  const { RU } = useCopy();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   return (

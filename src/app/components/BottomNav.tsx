@@ -1,12 +1,15 @@
 'use client';
 
+import { stripLocale } from '@/lib/i18n/routing';
+import { useCopy } from '@/lib/i18n/client';
+
 import Link from 'next/link';
 import { useLayoutEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { RU } from '@/lib/copy/ru';
 
 export default function BottomNav() {
-  const pathname = usePathname();
+  const { RU, t, path } = useCopy();
+  const pathname = stripLocale(usePathname());
   const navRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
@@ -19,6 +22,7 @@ export default function BottomNav() {
     return () => observer.disconnect();
   }, []);
 
+  // Anonymous prefetch can cache a login redirect before OAuth cookies arrive.
   const navItems = [
     { href: '/', label: RU.nav.home, icon: '🏠' },
     { href: '/items', label: RU.nav.items, icon: '🔧' },
@@ -26,13 +30,14 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav ref={navRef} className="bottom-nav" aria-label="Основная навигация">
+    <nav ref={navRef} className="bottom-nav" aria-label={t("Основная навигация")}>
       {navItems.map((item) => {
         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={path(item.href)}
+            prefetch={pathname === '/login' || pathname === '/auth/callback' ? false : undefined}
             aria-current={isActive ? 'page' : undefined}
             className={`nav-item ${isActive ? 'active' : ''}`}
           >

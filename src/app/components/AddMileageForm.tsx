@@ -1,17 +1,19 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useRef, useEffect } from 'react';
 import { addOdometerEntry } from '@/lib/actions/odometerActions';
-import { RU } from '@/lib/copy/ru';
-import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import { getAppMode, AppMode, isTestMode } from '@/lib/appMode';
 import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
 
 export default function AddMileageForm() {
+  const { formatMileageInput, RU, t, intlLocale, errorMessageText } = useCopy();
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
@@ -170,7 +172,7 @@ export default function AddMileageForm() {
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message">{errorMessageText(error)}</div>}
 
           <div className="form-field">
             <label htmlFor="mileageKm">{RU.mileageForm.mileageLabel}</label>
@@ -179,8 +181,8 @@ export default function AddMileageForm() {
               id="mileageKm"
               type="text"
               inputMode="numeric"
-              pattern="[0-9\s]*"
-              value={mileageKm}
+              pattern="[0-9,\s]*"
+              value={formatMileageInput(mileageKm)}
               onChange={(e) => setMileageKm(formatMileageInput(e.target.value))}
               required
               disabled={isSubmitting}
@@ -194,7 +196,8 @@ export default function AddMileageForm() {
               // TEST mode: show AppNow value (read-only, no date picker)
               <div>
                 <div style={{ fontSize: '0.875rem', color: 'rgba(0, 0, 0, 0.6)', marginBottom: 'var(--sp-2, 0.5rem)' }}>
-                  Дата (тестовое время): {fromDateTimeLocalValue(occurredAt).toLocaleString('ru-RU', { 
+
+                  {t("Дата (тестовое время):")} {fromDateTimeLocalValue(occurredAt).toLocaleString(intlLocale, {
                     year: 'numeric', 
                     month: '2-digit', 
                     day: '2-digit', 
@@ -203,7 +206,8 @@ export default function AddMileageForm() {
                   })}
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: 'rgba(0, 0, 0, 0.5)' }}>
-                  В режиме тестирования используется AppNow. Изменить дату нельзя.
+
+                  {t("В режиме тестирования используется AppNow. Изменить дату нельзя.")}
                 </div>
               </div>
             ) : (

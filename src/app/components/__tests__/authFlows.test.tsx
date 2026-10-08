@@ -186,3 +186,43 @@ it('shows a retry action for an automatic sign-out cookie-clear failure', async 
   await act(async () => { tree!.root.findByType('button').props.onClick(); });
   expect(mocks.replace).toHaveBeenCalledWith('/login');
 });
+
+describe('English auth flow', () => {
+  it('returns from the shared callback to /en only after confirmed synchronization', async () => {
+    vi.stubGlobal('sessionStorage', { getItem: () => 'en' });
+    mocks.pathname = '/auth/callback';
+    sync.mockResolvedValueOnce({ ok: false, status: 503 });
+    await mount(<AuthCallback />);
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(tree!.root.findByProps({ role: 'alert' }).children.join('')).toContain('synchronize');
+    expect(tree!.root.findByType('a').props.href).toBe('/en/login');
+    await act(async () => { tree!.root.findByType('button').props.onClick(); });
+    expect(mocks.replace).toHaveBeenCalledWith('/en');
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+  it('switches an authenticated gate between RU and EN without a second sync or sign-out', async () => {
+    mocks.pathname = '/'; await mount(<AuthGate />); await flush();
+    expect(sync).toHaveBeenCalledOnce();
+    for (const pathname of ['/en', '/en/items', '/items']) {
+      mocks.pathname = pathname;
+      await act(async () => { tree!.update(<AuthGate />); }); await flush();
+    }
+    expect(sync).toHaveBeenCalledOnce(); expect(clear).not.toHaveBeenCalled();
+    expect(mocks.signOut).not.toHaveBeenCalled(); expect(mocks.replace).not.toHaveBeenCalled();
+  });
+  it('redirects an anonymous English session to English login', async () => {
+    current = null; mocks.pathname = '/en/items'; await mount(<AuthGate />); await flush();
+    expect(mocks.replace).toHaveBeenCalledWith('/en/login');
+  });
+  it('keeps an authenticated English login in the English app', async () => {
+    mocks.pathname = '/en/login'; await mount(<AuthGate />); await flush();
+    expect(mocks.replace).toHaveBeenCalledWith('/en');
+  });
+  it('signs out to English login after both operations succeed', async () => {
+    mocks.pathname = '/en'; await mount(<><AuthGate /><TopBreadcrumbsBar /></>); await flush();
+    await act(async () => { tree!.root.findByProps({ className: 'top-breadcrumbs-logout-trigger' }).props.onClick(); });
+    await act(async () => { await tree!.root.findByProps({ className: 'top-breadcrumbs-confirm-exit' }).props.onClick(); }); await flush();
+    expect(mocks.signOut).toHaveBeenCalledOnce(); expect(clear).toHaveBeenCalledOnce();
+    expect(mocks.replace).toHaveBeenCalledWith('/en/login');
+  });
+});

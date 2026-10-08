@@ -1,8 +1,9 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState, useEffect } from 'react';
 import AddServiceEventForm from './AddServiceEventForm';
-import { RU } from '@/lib/copy/ru';
 
 interface MarkReplacementButtonProps {
   serviceItemId: string;
@@ -21,6 +22,7 @@ export default function MarkReplacementButton({
   disabledHint,
   onSuccess,
 }: MarkReplacementButtonProps) {
+  const { RU } = useCopy();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [currentMileage, setCurrentMileage] = useState<number | null>(defaultMileage ?? null);
 

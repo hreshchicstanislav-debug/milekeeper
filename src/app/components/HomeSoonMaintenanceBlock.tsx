@@ -1,13 +1,13 @@
 'use client';
 
+import { useCopy, useHydrated } from '@/lib/i18n/client';
+
 import { useRouter } from 'next/navigation';
-import { RU } from '@/lib/copy/ru';
 import type { SoonMaintenanceItem } from '@/lib/home/soonMaintenance';
 import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { getAppMode, AppMode } from '@/lib/appMode';
 import { getAppNow } from '@/lib/appNow';
 import StatusRowCompact from './StatusRowCompact';
-import { formatNumber } from '@/lib/copy/ru';
 import type { OdometerEntry } from '@/lib/db/types';
 
 interface SoonMaintenanceItemWithVM extends SoonMaintenanceItem {
@@ -42,6 +42,8 @@ export default function HomeSoonMaintenanceBlock({
   odometerEntries = [],
   latestEntry = null
 }: HomeSoonMaintenanceBlockProps) {
+  const { RU, t, formatNumber, path, systemText } = useCopy();
+  const hydrated = useHydrated();
   const router = useRouter();
   
   // Dev-only: Get app mode and AppNow for diagnostics
@@ -116,10 +118,10 @@ export default function HomeSoonMaintenanceBlock({
           <div className="soon-maintenance-rate-hint">
             {isFallbackRate || !windowDaysUsed ? (
               // Fallback: show approximate rate without window claim
-              <>Средний пробег: ~{formatNumber(Math.round(dailyKmRate!))} км/день (примерно)</>
+              <>{t("Средний пробег: ~")}{formatNumber(Math.round(dailyKmRate!))}  {t("км/день (примерно)")}</>
             ) : (
               // Success: show rate with window label
-              <>Средний пробег за последние {windowDaysUsed} дней: ~{formatNumber(Math.round(dailyKmRate!))} км/день</>
+              <>{t("Средний пробег за последние")} {windowDaysUsed}  {t("дней: ~")}{formatNumber(Math.round(dailyKmRate!))}  {t("км/день")}</>
             )}
           </div>
           
@@ -135,7 +137,7 @@ export default function HomeSoonMaintenanceBlock({
               fontFamily: 'monospace'
             }}>
               <div><strong>AppMode:</strong> {appMode}</div>
-              <div><strong>AppNow:</strong> {appNow.toISOString()}</div>
+              <div><strong>AppNow:</strong> <span>{hydrated ? appNow.toISOString() : '—'}</span></div>
               <div><strong>Daily Rate:</strong> windowDaysUsed={windowDaysUsed ?? 'null'}, samplesUsed={samplesUsed ?? '?'}, isFallback={isFallbackRate ? 'true' : 'false'}{fallbackReason ? `, reason="${fallbackReason}"` : ''}</div>
               <div><strong>Odometer Window:</strong> entriesWithin14d={entriesWithin14d}, entriesWithin60d={entriesWithin60d}</div>
               {latestEntry && (
@@ -157,21 +159,21 @@ export default function HomeSoonMaintenanceBlock({
                 className={`soon-maintenance-row clickable ${index === validItems.length - 1 ? 'last' : ''}`}
                 onClick={() => {
                   // Navigate to item details page
-                  router.push(`/items/${item.id}`);
+                  router.push(path(`/items/${item.id}`));
                 }}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    router.push(`/items/${item.id}`);
+                    router.push(path(`/items/${item.id}`));
                   }
                 }}
               >
                 <div className="soon-maintenance-row-content">
                   <StatusRowCompact
                     title={item.title}
-                    statusText={statusVM.statusText}
+                    statusText={systemText(statusVM.statusText)}
                     category={category}
                     isPredictionReliable={statusVM.isPredictionReliable}
                     className="soon-maintenance-status-content"
@@ -184,7 +186,7 @@ export default function HomeSoonMaintenanceBlock({
                       marginTop: 'var(--sp-1, 0.25rem)',
                       fontFamily: 'monospace'
                     }}>
-                      statusText="{statusVM.statusText}", daysToReplace={statusVM.daysToReplace ?? 'null'}, isPredictionReliable={statusVM.isPredictionReliable ? 'true' : 'false'}
+                      statusText="{systemText(statusVM.statusText)}", daysToReplace={statusVM.daysToReplace ?? 'null'}, isPredictionReliable={statusVM.isPredictionReliable ? 'true' : 'false'}
                       {!statusVM.isPredictionReliable && (
                         <span style={{ color: 'rgba(255, 0, 0, 0.6)' }}>
                           {' '}(unreliable: {isFallbackRate ? 'isFallbackRate' : ''}{dailyKmRate === 30 ? 'dailyKmRate=30' : ''})

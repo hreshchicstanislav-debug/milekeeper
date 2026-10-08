@@ -1,12 +1,13 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createServiceItem, updateServiceItem, deleteServiceItem } from '@/lib/actions/serviceActions';
-import { RU } from '@/lib/copy/ru';
-import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import type { ServiceItem } from '@/lib/db/types';
 import WheelPicker from './WheelPicker';
 
@@ -318,6 +319,7 @@ export default function AddServiceItemForm({
   onSuccess,
   onReturnToDetails
 }: AddServiceItemFormProps = {}) {
+  const { formatMileageInput, RU, t, errorMessageText } = useCopy();
   const [isOpen, setIsOpen] = useState(mode === 'edit');
   const [title, setTitle] = useState(initialItem?.title || '');
   const [measurementMode, setMeasurementMode] = useState<'km' | 'calendar'>(
@@ -397,7 +399,7 @@ export default function AddServiceItemForm({
       setNotifyBeforeDays(initialItem.notify_before_days ? String(initialItem.notify_before_days) : '');
       setNote(initialItem.note || '');
     }
-  }, [initialItem, mode]);
+  }, [initialItem?.id, initialItem?.title, initialItem?.measurement_mode, initialItem?.interval_km, initialItem?.interval_days, initialItem?.notify_before_days, initialItem?.note, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -464,7 +466,7 @@ export default function AddServiceItemForm({
 
     // Валидация: максимальное значение 365 дней
     if (notifyDaysValue > 365) {
-      setError('Поле «Уведомлять за, дней» не должно превышать 365 дней');
+      setError(t("Поле «Уведомлять за, дней» не должно превышать 365 дней"));
       setIsSubmitting(false);
       return;
     }
@@ -634,7 +636,7 @@ export default function AddServiceItemForm({
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message">{errorMessageText(error)}</div>}
           {successMessage && <div className="success-message">{successMessage}</div>}
 
           <div className="form-field">
@@ -690,8 +692,8 @@ export default function AddServiceItemForm({
               id="intervalKm"
               type="text"
               inputMode="numeric"
-              pattern="[0-9\s]*"
-              value={intervalKm}
+              pattern="[0-9,\s]*"
+              value={formatMileageInput(intervalKm)}
               onChange={(e) => setIntervalKm(formatMileageInput(e.target.value))}
               disabled={isSubmitting}
               placeholder={RU.items.intervalKmPlaceholder}

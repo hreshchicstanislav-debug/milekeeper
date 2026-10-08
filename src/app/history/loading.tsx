@@ -1,10 +1,13 @@
-import { RU } from '@/lib/copy/ru';
+'use client';
+
+import { useCopy } from '@/lib/i18n/client';
 
 /**
  * Instant loading state for the odometer history list.
  * Mirrors `.history-list-group` / `.history-row` so rows do not shift when data lands.
  */
 export default function HistoryLoading() {
+  const { RU } = useCopy();
   return (
     <>
       <header className="page-header">

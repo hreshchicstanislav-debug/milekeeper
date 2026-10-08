@@ -1,9 +1,10 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useEffect, useRef } from 'react';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from './MarkReplacementButton';
@@ -11,7 +12,6 @@ import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { useToast } from './ToastProvider';
 import { getAppNow } from '@/lib/appNow';
-import { formatServiceTimeFromSignedDays } from '@/lib/format/formatServiceTime';
 
 // Hook for swipe-to-close gesture
 function useSwipeToClose<T extends HTMLElement>(
@@ -218,6 +218,7 @@ export default function ItemDetailsSheet({
   onOpenSettings,
   onRefresh,
 }: ItemDetailsSheetProps) {
+  const { RU, t, formatNumber, formatServiceTimeFromSignedDays, systemText, errorMessageText } = useCopy();
   const toast = useToast();
   const [history, setHistory] = useState<ServiceEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -289,7 +290,7 @@ export default function ItemDetailsSheet({
       const errorMessage =
         err instanceof Error
           ? err.message
-          : RU.items.historyLoadError || 'Не удалось загрузить историю';
+          : RU.items.historyLoadError || t("Не удалось загрузить историю");
       setError(errorMessage);
       if (process.env.NODE_ENV !== 'production') {
         console.error('[ItemDetailsSheet] Failed to load history:', err);
@@ -365,8 +366,8 @@ export default function ItemDetailsSheet({
     // Show toast first (before closing sheet to ensure it's called)
     // Toast provider is global, so it will persist even if sheet unmounts
     toast.success({
-      title: 'Готово',
-      subtitle: 'Замена отмечена',
+      title: t("Готово"),
+      subtitle: t("Замена отмечена"),
       durationMs: 2000,
     });
     
@@ -405,9 +406,9 @@ export default function ItemDetailsSheet({
       return formatServiceTimeFromSignedDays(value);
     }
     if (value <= 0) {
-      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${unit}`;
+      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${systemText(unit)}`;
     }
-    return `${formatNumber(value)} ${unit}`;
+    return `${formatNumber(value)} ${systemText(unit)}`;
   };
 
   // Dev-only: compare old vs new logic (temporary)
@@ -501,11 +502,12 @@ export default function ItemDetailsSheet({
             <h3 className="item-history-title">{RU.items.historyTitle}</h3>
             {isLoading ? (
               <div className="item-history-loading">
-                Загрузка…
+
+                {t("Загрузка…")}
               </div>
             ) : error ? (
               <div className="item-history-error">
-                {error}
+                {errorMessageText(error)}
               </div>
             ) : history.length === 0 ? (
               <div className="item-history-empty">
@@ -584,7 +586,7 @@ export default function ItemDetailsSheet({
                 </div>
                 <div className="calc-row">
                   <span className="k">{RU.items.details.calcByTime}</span>
-                  <span className="v">{formatNumber(item.interval_days)} дней</span>
+                  <span className="v">{formatNumber(item.interval_days)}  {t("дней")}</span>
                 </div>
               </div>
             )}
@@ -595,8 +597,8 @@ export default function ItemDetailsSheet({
                 <span>{RU.items.details.calcNotifyThresholds}</span>
               </div>
               <div className="calc-row">
-                <span className="k">Уведомлять за, дней</span>
-                <span className="v">{formatNumber(item.notify_before_days)} дней</span>
+                <span className="k">{t("Уведомлять за, дней")}</span>
+                <span className="v">{formatNumber(item.notify_before_days)}  {t("дней")}</span>
               </div>
             </div>
 
@@ -607,7 +609,7 @@ export default function ItemDetailsSheet({
                   <span className="k">{RU.items.details.calcAvgDaily}</span>
                   <span className="v">
                     {statusResult.dailyKmRateUsed !== null && statusResult.dailyKmRateUsed !== undefined
-                      ? `${formatNumber(Math.round(statusResult.dailyKmRateUsed))} ${RU.common.km}/день`
+                      ? `${formatNumber(Math.round(statusResult.dailyKmRateUsed))} ${RU.common.km}${t("/день")}`
                       : RU.items.details.calcNoForecast}
                   </span>
                 </div>
@@ -627,7 +629,7 @@ export default function ItemDetailsSheet({
                     <span>{RU.items.details.calcPrimary}</span>
                   </div>
                   <div className="calc-row">
-                    <span className="k">{statusResult.primary.label}</span>
+                    <span className="k">{systemText(statusResult.primary.label)}</span>
                     <span className="v">
                       {formatMetricValue(statusResult.primary.remainingValue, statusResult.primary.unit)}
                     </span>
@@ -635,19 +637,19 @@ export default function ItemDetailsSheet({
                   {statusResult.primary.kind === 'km' && (
                     <>
                       <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                        <span className="k">Следующая замена</span>
+                        <span className="k">{t("Следующая замена")}</span>
                         <span className="v">{formatNumber(statusResult.primary.dueValue)} {RU.common.km}</span>
                       </div>
                       {/* Show predicted days for km mode if available */}
                       {item.measurement_mode === 'km' && statusResult.remainingDays !== null && !Number.isNaN(statusResult.remainingDays) && (
                         <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                          <span className="k">Прогноз дней</span>
+                          <span className="k">{t("Прогноз дней")}</span>
                           <span className="v">{formatServiceTimeFromSignedDays(statusResult.remainingDays)}</span>
                         </div>
                       )}
                       {item.measurement_mode === 'km' && statusResult.remainingKm !== null && statusResult.remainingDays === null && (
                         <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                          <span className="k">Прогноз дней</span>
+                          <span className="k">{t("Прогноз дней")}</span>
                           <span className="v">{RU.items.details.calcNoForecast}</span>
                         </div>
                       )}
@@ -655,7 +657,7 @@ export default function ItemDetailsSheet({
                   )}
                   {statusResult.primary.kind === 'time' && item.measurement_mode === 'calendar' && (
                     <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                      <span className="k">Следующая замена</span>
+                      <span className="k">{t("Следующая замена")}</span>
                       <span className="v"><LocalDateTime iso={new Date(statusResult.primary.dueValue).toISOString()} /></span>
                     </div>
                   )}
@@ -668,7 +670,7 @@ export default function ItemDetailsSheet({
                       <span>{RU.items.details.calcSecondary}</span>
                     </div>
                     <div className="calc-row">
-                      <span className="k" style={{ fontSize: '13px' }}>{statusResult.secondary.label}</span>
+                      <span className="k" style={{ fontSize: '13px' }}>{systemText(statusResult.secondary.label)}</span>
                       <span className="v" style={{ fontSize: '13px' }}>
                         {statusResult.secondary.remainingValue !== null
                           ? formatMetricValue(statusResult.secondary.remainingValue, statusResult.secondary.unit)
@@ -688,7 +690,7 @@ export default function ItemDetailsSheet({
                       fontSize: '13px', 
                       color: statusResult.status === 'OVERDUE' ? '#c33' : statusResult.status === 'SOON' ? '#f59e0b' : 'rgba(0,0,0,0.7)' 
                     }}>
-                      {statusResult.why}
+                      {systemText(statusResult.why)}
                     </span>
                   </div>
                 </div>

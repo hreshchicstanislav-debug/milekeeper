@@ -1,14 +1,16 @@
 'use client';
 
+import { stripLocale } from '@/lib/i18n/routing';
+import { useCopy } from '@/lib/i18n/client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
-import { RU } from '@/lib/copy/ru';
 import { getBrowserSession } from '@/lib/auth/browserSession';
 
 const HIDDEN_PATHS = new Set<string>(['/login', '/auth/callback']);
 
-function getBreadcrumbText(pathname: string): string {
+function getBreadcrumbText(pathname: string, RU: ReturnType<typeof useCopy>['RU'], t: ReturnType<typeof useCopy>['t']): string {
   if (pathname === '/') {
     return RU.nav.home;
   }
@@ -16,7 +18,7 @@ function getBreadcrumbText(pathname: string): string {
     return `${RU.nav.home} / ${RU.items.title}`;
   }
   if (pathname.startsWith('/items/')) {
-    return `${RU.nav.home} / ${RU.items.title} / Детали`;
+    return `${RU.nav.home} / ${RU.items.title} / ${t("Детали")}`;
   }
   if (pathname === '/history') {
     return `${RU.nav.home} / ${RU.history.title}`;
@@ -25,7 +27,8 @@ function getBreadcrumbText(pathname: string): string {
 }
 
 export default function TopBreadcrumbsBar() {
-  const pathname = usePathname();
+  const { RU, t, path, errorMessageText } = useCopy();
+  const pathname = stripLocale(usePathname());
   const router = useRouter();
   const supabase = useMemo(() => createBrowserClient(), []);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -84,7 +87,7 @@ export default function TopBreadcrumbsBar() {
     return null;
   }
 
-  const breadcrumbText = getBreadcrumbText(pathname);
+  const breadcrumbText = getBreadcrumbText(pathname, RU, t);
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -93,9 +96,9 @@ export default function TopBreadcrumbsBar() {
       const manager = getBrowserSession();
       if (await manager.logout()) {
         setConfirmOpen(false);
-        router.replace('/login');
+        router.replace(path('/login'));
       } else {
-        setLogoutError(manager.state.message ?? 'Не удалось завершить выход. Повторите попытку.');
+        setLogoutError(manager.state.message ?? t("Не удалось завершить выход. Повторите попытку."));
       }
     } finally {
       setIsSigningOut(false);
@@ -103,7 +106,7 @@ export default function TopBreadcrumbsBar() {
   };
 
   return (
-    <div className="top-breadcrumbs-bar" aria-label="Навигация">
+    <div className="top-breadcrumbs-bar" aria-label={t("Навигация")}>
       <div className="top-breadcrumbs-path">{breadcrumbText}</div>
       {(isAuthed || confirmOpen) && (
         <div className="top-breadcrumbs-logout" ref={confirmRef}>
@@ -112,16 +115,17 @@ export default function TopBreadcrumbsBar() {
             className="top-breadcrumbs-logout-trigger"
             onClick={() => setConfirmOpen((prev) => !prev)}
             disabled={isSigningOut || !!logoutError}
-            aria-label="Выйти"
+            aria-label={t("Выйти")}
             aria-expanded={confirmOpen}
             aria-haspopup="dialog"
           >
-            Выйти
+
+            {t("Выйти")}
           </button>
           {confirmOpen && (
-            <div className="top-breadcrumbs-logout-confirm" role="dialog" aria-label="Подтверждение выхода">
-              <div className="top-breadcrumbs-logout-confirm-title">Выйти?</div>
-              {logoutError && <div role="alert">{logoutError}</div>}
+            <div className="top-breadcrumbs-logout-confirm" role="dialog" aria-label={t("Подтверждение выхода")}>
+              <div className="top-breadcrumbs-logout-confirm-title">{t("Выйти?")}</div>
+              {logoutError && <div role="alert">{errorMessageText(logoutError)}</div>}
               <div className="top-breadcrumbs-logout-confirm-actions">
                 <button
                   type="button"
@@ -129,7 +133,8 @@ export default function TopBreadcrumbsBar() {
                   onClick={() => setConfirmOpen(false)}
                   disabled={isSigningOut || !!logoutError}
                 >
-                  Отмена
+
+                  {t("Отмена")}
                 </button>
                 <button
                   type="button"
@@ -137,7 +142,7 @@ export default function TopBreadcrumbsBar() {
                   onClick={handleSignOut}
                   disabled={isSigningOut}
                 >
-                  {isSigningOut ? 'Выход...' : 'Выйти'}
+                  {isSigningOut ? t("Выход...") : t("Выйти")}
                 </button>
               </div>
             </div>

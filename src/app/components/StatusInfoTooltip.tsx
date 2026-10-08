@@ -1,11 +1,15 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { createPortal } from 'react-dom';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 
-const tooltipText = 'Не можем точно посчитать срок, потому что пробег вносится редко. Добавляй пробег хотя бы раз в неделю — прогноз станет точнее.';
+
 
 export default function StatusInfoTooltip() {
+  const { t } = useCopy();
+  const tooltipText = t("Не можем точно посчитать срок, потому что пробег вносится редко. Добавляй пробег хотя бы раз в неделю — прогноз станет точнее.");
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -56,7 +60,7 @@ export default function StatusInfoTooltip() {
         type="button"
         className="status-info-indicator"
         onClick={() => setOpen((value) => !value)}
-        aria-label="Почему прогноз неточный"
+        aria-label={t("Почему прогноз неточный")}
         aria-expanded={open}
         aria-describedby={open ? id : undefined}
       >ⓘ</button>

@@ -1,4 +1,5 @@
 'use client';
+import { useCopy } from '@/lib/i18n/client';
 
 import StatusInfoTooltip from './StatusInfoTooltip';
 
@@ -31,6 +32,7 @@ export default function StatusRowCompact({
   onClick,
   className = '',
 }: StatusRowCompactProps) {
+  const { systemText } = useCopy();
   return (
     <div className={`status-row-compact ${className}`.trim()}>
       {/* Left: tiny category indicator */}
@@ -41,7 +43,7 @@ export default function StatusRowCompact({
       
       {/* Right: statusText with optional info indicator */}
       <div className="status-row-compact-right">
-        <span className="status-row-compact-status-text">{statusText}</span>
+        <span className="status-row-compact-status-text">{systemText(statusText)}</span>
         {!isPredictionReliable && (
           <StatusInfoTooltip />
         )}

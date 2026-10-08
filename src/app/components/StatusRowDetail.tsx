@@ -1,4 +1,5 @@
 'use client';
+import { useCopy } from '@/lib/i18n/client';
 
 import StatusInfoTooltip from './StatusInfoTooltip';
 
@@ -33,6 +34,7 @@ export default function StatusRowDetail({
   onClick,
   className = '',
 }: StatusRowDetailProps) {
+  const { systemText } = useCopy();
   // Calculate progress bar fill percentage
   let progressFill = null;
   if (remainingRatio !== null) {
@@ -48,7 +50,7 @@ export default function StatusRowDetail({
       <div className="status-row-detail-header">
         <div className="status-row-detail-title">{title}</div>
         <div className="status-row-detail-status">
-          <span className="status-row-detail-status-text">{statusText}</span>
+          <span className="status-row-detail-status-text">{systemText(statusText)}</span>
           {!isPredictionReliable && (
             <StatusInfoTooltip />
           )}

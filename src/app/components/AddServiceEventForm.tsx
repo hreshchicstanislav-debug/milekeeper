@@ -1,11 +1,12 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useRef, useEffect } from 'react';
 import { addServiceEvent } from '@/lib/actions/serviceActions';
-import { RU } from '@/lib/copy/ru';
-import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 
 // Hook for swipe-to-close gesture
@@ -207,6 +208,7 @@ export default function AddServiceEventForm({
   onClose,
   onSuccess,
 }: AddServiceEventFormProps) {
+  const { formatMileageInput, RU, errorMessageText } = useCopy();
   const [mileageKm, setMileageKm] = useState(
     defaultMileage ? formatMileageInput(String(defaultMileage)) : ''
   );
@@ -336,7 +338,7 @@ export default function AddServiceEventForm({
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message">{errorMessageText(error)}</div>}
 
           <div className="form-field">
             <label htmlFor="serviceEventMileageKm">{RU.items.serviceEvent.mileageLabel}</label>
@@ -345,8 +347,8 @@ export default function AddServiceEventForm({
               id="serviceEventMileageKm"
               type="text"
               inputMode="numeric"
-              pattern="[0-9\s]*"
-              value={mileageKm}
+              pattern="[0-9,\s]*"
+              value={formatMileageInput(mileageKm)}
               onChange={(e) => setMileageKm(formatMileageInput(e.target.value))}
               required
               disabled={isSubmitting}

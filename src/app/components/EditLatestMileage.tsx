@@ -1,12 +1,13 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateLatestOdometerEntry } from '@/lib/actions/odometerActions';
-import { RU } from '@/lib/copy/ru';
-import { formatMileageInput, parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
+import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import type { OdometerEntry } from '@/lib/db/types';
 import { useSwipeToClose } from './useSwipeToClose';
@@ -22,6 +23,7 @@ export default function EditLatestMileage({
   onClose,
   latestEntry,
 }: EditLatestMileageProps) {
+  const { formatMileageInput, RU, errorMessageText } = useCopy();
   const [mileageKm, setMileageKm] = useState(
     formatMileageInput(String(latestEntry.mileage_km))
   );
@@ -49,7 +51,7 @@ export default function EditLatestMileage({
       // Фокус на поле пробега
       setTimeout(() => mileageInputRef.current?.focus(), 100);
     }
-  }, [isOpen, latestEntry]);
+  }, [isOpen, latestEntry.id, latestEntry.mileage_km, latestEntry.occurred_at, latestEntry.note]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +125,7 @@ export default function EditLatestMileage({
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message">{errorMessageText(error)}</div>}
 
           <div className="form-field">
           <label htmlFor="editMileageKm">{RU.history.edit.mileageLabel}</label>
@@ -132,8 +134,8 @@ export default function EditLatestMileage({
             id="editMileageKm"
             type="text"
             inputMode="numeric"
-            pattern="[0-9\s]*"
-            value={mileageKm}
+            pattern="[0-9,\s]*"
+            value={formatMileageInput(mileageKm)}
             onChange={(e) => setMileageKm(formatMileageInput(e.target.value))}
             required
             disabled={isSubmitting}

@@ -3698,3 +3698,11 @@ p {
     overflow: visible;
   }
 }
+
+/* Compact locale control using existing typography and colors. */
+.language-switcher { display: flex; justify-content: flex-end; gap: 2px; padding: 4px var(--sp-4, 1rem); }
+.language-switcher button { min-width: 44px; min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 0.8125rem; cursor: pointer; }
+.language-switcher button[aria-pressed="true"] { background: rgba(0,0,0,0.06); font-weight: 600; }
+.language-switcher button:focus-visible { outline: 2px solid #007aff; outline-offset: 2px; }
+
+.modal-locale-control { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); right: max(8px, calc((100vw - var(--app-max-width, 430px)) / 2)); border-radius: 12px; background: var(--app-bg, #f2f2f7); }

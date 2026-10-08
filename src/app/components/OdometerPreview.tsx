@@ -1,12 +1,13 @@
+import { getCopy } from '@/lib/i18n/server';
 import type { OdometerEntry } from '@/lib/db/types';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 
 interface OdometerPreviewProps {
   entries: OdometerEntry[];
 }
 
-export default function OdometerPreview({ entries }: OdometerPreviewProps) {
+export default async function OdometerPreview({ entries }: OdometerPreviewProps) {
+  const { RU, formatNumber } = await getCopy();
   // Show first 10 entries
   const previewEntries = entries.slice(0, 10);
 

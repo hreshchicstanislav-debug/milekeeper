@@ -1,5 +1,7 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import Link from 'next/link';
 import type { ServiceItem } from '@/lib/db/types';
 
@@ -17,6 +19,7 @@ export default function HomeNeedsFirstReplacementBlock({
   items, 
   totalCount 
 }: HomeNeedsFirstReplacementBlockProps) {
+  const { t, path } = useCopy();
   // IMPORTANT: Return null if no items (no empty surface)
   if (items.length === 0) {
     return null;
@@ -27,9 +30,10 @@ export default function HomeNeedsFirstReplacementBlock({
 
   return (
     <section className="needs-first-replacement-section">
-      <h2 className="needs-first-replacement-title">Нужно отметить первую замену</h2>
+      <h2 className="needs-first-replacement-title">{t("Нужно отметить первую замену")}</h2>
       <p className="needs-first-replacement-subtitle">
-        Чтобы начать отсчёт, нажми «Отметить замену» хотя бы один раз.
+
+        {t("Чтобы начать отсчёт, нажми «Отметить замену» хотя бы один раз.")}
       </p>
       <div className="needs-first-replacement-group">
         <div className="needs-first-replacement-list">
@@ -46,14 +50,16 @@ export default function HomeNeedsFirstReplacementBlock({
           {hasMore && (
             <div className="needs-first-replacement-row last">
               <span className="needs-first-replacement-row-more">
-                Ещё {remainingCount}…
+
+                {t('Ещё {count}…').replace('{count}', String(remainingCount))}
               </span>
             </div>
           )}
         </div>
         <div className="needs-first-replacement-footer">
-          <Link href="/items" className="needs-first-replacement-link">
-            Открыть все элементы
+          <Link href={path('/items')} className="needs-first-replacement-link">
+
+            {t("Открыть все элементы")}
           </Link>
         </div>
       </div>

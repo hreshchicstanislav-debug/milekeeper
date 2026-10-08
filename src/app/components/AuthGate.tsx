@@ -1,11 +1,14 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
 import { authRedirect, getBrowserSession, type BrowserAuthState } from '@/lib/auth/browserSession';
 
 export default function AuthGate() {
+  const { t, path, errorMessageText } = useCopy();
   const router = useRouter();
   const pathname = usePathname();
   const pathRef = useRef(pathname);
@@ -48,10 +51,10 @@ export default function AuthGate() {
   if (state.phase !== 'error' || pathname === '/auth/callback' || state.interactiveLogout) return null;
   return (
     <div role="alert" style={{ padding: 'var(--sp-3, 0.75rem)' }}>
-      <p>{state.message}</p>
+      <p>{errorMessageText(state.message ?? '')}</p>
       <button type="button" onClick={() => void (state.operation === 'logout'
-        ? getBrowserSession().logout(false) : getBrowserSession().synchronize(true))}>Повторить</button>
-      {state.operation !== 'logout' && <>{' '}<a href="/login">Войти через Google</a></>}
+        ? getBrowserSession().logout(false) : getBrowserSession().synchronize(true))}>{t("Повторить")}</button>
+      {state.operation !== 'logout' && <>{' '}<a href={path('/login')}>{t("Войти через Google")}</a></>}
     </div>
   );
 }

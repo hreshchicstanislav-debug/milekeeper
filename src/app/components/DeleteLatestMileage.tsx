@@ -1,11 +1,12 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import ModalSheet from './ModalSheet';
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteLatestOdometerEntry } from '@/lib/actions/odometerActions';
-import { RU } from '@/lib/copy/ru';
 import { useSwipeToClose } from './useSwipeToClose';
 
 interface DeleteLatestMileageProps {
@@ -17,6 +18,7 @@ export default function DeleteLatestMileage({
   isOpen,
   onClose,
 }: DeleteLatestMileageProps) {
+  const { RU, errorMessageText } = useCopy();
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -78,7 +80,7 @@ export default function DeleteLatestMileage({
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="error-message">{errorMessageText(error)}</div>}
 
           <div className="form-field">
             <p className="delete-confirm-message">{RU.history.delete.confirmMessage}</p>

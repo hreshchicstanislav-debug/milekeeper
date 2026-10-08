@@ -1,8 +1,9 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState } from 'react';
 import EditLatestMileage from '@/app/components/EditLatestMileage';
-import { RU } from '@/lib/copy/ru';
 import type { OdometerEntry } from '@/lib/db/types';
 
 interface EditLatestMileageButtonProps {
@@ -12,6 +13,7 @@ interface EditLatestMileageButtonProps {
 export default function EditLatestMileageButton({
   latestEntry,
 }: EditLatestMileageButtonProps) {
+  const { RU } = useCopy();
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   return (

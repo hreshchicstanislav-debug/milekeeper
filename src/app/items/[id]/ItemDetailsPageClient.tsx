@@ -1,9 +1,10 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from '@/app/components/MarkReplacementButton';
@@ -12,7 +13,6 @@ import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { logMileageComparison } from '@/lib/dev/mileageDiagnostics';
 import { getAppNow } from '@/lib/appNow';
-import { formatServiceTimeFromSignedDays } from '@/lib/format/formatServiceTime';
 
 interface ItemDetailsPageClientProps {
   item: ServiceItem;
@@ -33,6 +33,7 @@ export default function ItemDetailsPageClient({
   dailyKmRate = null,
   initialTab = 'history',
 }: ItemDetailsPageClientProps) {
+  const { RU, t, formatNumber, formatServiceTimeFromSignedDays, path, systemText, errorMessageText } = useCopy();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [history, setHistory] = useState<ServiceEvent[]>([]);
@@ -66,7 +67,7 @@ export default function ItemDetailsPageClient({
         params.set('tab', 'calc');
       }
       const newUrl = `/items/${item.id}${params.toString() ? `?${params.toString()}` : ''}`;
-      router.replace(newUrl, { scroll: false });
+      router.replace(path(newUrl), { scroll: false });
     }
   }, [activeTab, item.id, router]); // Removed searchParams from dependencies to break the loop
 
@@ -171,9 +172,9 @@ export default function ItemDetailsPageClient({
       return formatServiceTimeFromSignedDays(value);
     }
     if (value <= 0) {
-      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${unit}`;
+      return `${RU.items.details.calcExceeded} ${formatNumber(Math.abs(value))} ${systemText(unit)}`;
     }
-    return `${formatNumber(value)} ${unit}`;
+    return `${formatNumber(value)} ${systemText(unit)}`;
   };
 
   return (
@@ -184,7 +185,7 @@ export default function ItemDetailsPageClient({
         {/* Sticky Header */}
         <div className="item-details-page-header">
         <div className="item-details-page-header-row">
-          <Link href="/items" className="item-details-page-back">
+          <Link href={path('/items')} className="item-details-page-back">
             ←
           </Link>
           <div className="item-details-page-title-wrapper">
@@ -220,9 +221,9 @@ export default function ItemDetailsPageClient({
           <div className="item-history">
             <h3 className="item-history-title">{RU.items.historyTitle}</h3>
             {isLoading ? (
-              <div className="item-history-loading">Загрузка…</div>
+              <div className="item-history-loading">{t("Загрузка…")}</div>
             ) : error ? (
-              <div className="item-history-error">{error}</div>
+              <div className="item-history-error">{errorMessageText(error)}</div>
             ) : history.length === 0 ? (
               <div className="item-history-empty">{RU.items.historyEmpty}</div>
             ) : (
@@ -298,7 +299,7 @@ export default function ItemDetailsPageClient({
                 </div>
                 <div className="calc-row">
                   <span className="k">{RU.items.details.calcByTime}</span>
-                  <span className="v">{formatNumber(item.interval_days)} дней</span>
+                  <span className="v">{formatNumber(item.interval_days)}  {t("дней")}</span>
                 </div>
               </div>
             )}
@@ -309,8 +310,8 @@ export default function ItemDetailsPageClient({
                 <span>{RU.items.details.calcNotifyThresholds}</span>
               </div>
               <div className="calc-row">
-                <span className="k">Уведомлять за, дней</span>
-                <span className="v">{formatNumber(item.notify_before_days)} дней</span>
+                <span className="k">{t("Уведомлять за, дней")}</span>
+                <span className="v">{formatNumber(item.notify_before_days)}  {t("дней")}</span>
               </div>
             </div>
 
@@ -321,7 +322,7 @@ export default function ItemDetailsPageClient({
                   <span className="k">{RU.items.details.calcAvgDaily}</span>
                   <span className="v">
                     {statusResult.dailyKmRateUsed !== null && statusResult.dailyKmRateUsed !== undefined
-                      ? `${formatNumber(Math.round(statusResult.dailyKmRateUsed))} ${RU.common.km}/день`
+                      ? `${formatNumber(Math.round(statusResult.dailyKmRateUsed))} ${RU.common.km}${t("/день")}`
                       : RU.items.details.calcNoForecast}
                   </span>
                 </div>
@@ -341,7 +342,7 @@ export default function ItemDetailsPageClient({
                     <span>{RU.items.details.calcPrimary}</span>
                   </div>
                   <div className="calc-row">
-                    <span className="k">{statusResult.primary.label}</span>
+                    <span className="k">{systemText(statusResult.primary.label)}</span>
                     <span className="v">
                       {formatMetricValue(statusResult.primary.remainingValue, statusResult.primary.unit)}
                     </span>
@@ -349,12 +350,12 @@ export default function ItemDetailsPageClient({
                   {statusResult.primary.kind === 'km' && (
                     <>
                       <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                        <span className="k">Следующая замена</span>
+                        <span className="k">{t("Следующая замена")}</span>
                         <span className="v">{formatNumber(statusResult.primary.dueValue)} {RU.common.km}</span>
                       </div>
                       {item.measurement_mode === 'km' && statusResult.remainingDays !== null && !Number.isNaN(statusResult.remainingDays) && (
                         <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                          <span className="k">Прогноз дней</span>
+                          <span className="k">{t("Прогноз дней")}</span>
                           <span className="v">{formatServiceTimeFromSignedDays(statusResult.remainingDays)}</span>
                         </div>
                       )}
@@ -362,9 +363,9 @@ export default function ItemDetailsPageClient({
                   )}
                   {statusResult.primary.kind === 'time' && item.measurement_mode === 'calendar' && (
                     <div className="calc-row" style={{ marginTop: '4px', fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}>
-                      <span className="k">Следующая замена</span>
+                      <span className="k">{t("Следующая замена")}</span>
                       <span className="v">
-                        {statusResult.primary.dueDate ? new Date(statusResult.primary.dueDate).toLocaleDateString('ru-RU') : '—'}
+                        <LocalDateTime iso={statusResult.primary.dueDate?.toISOString()} dateOnly />
                       </span>
                     </div>
                   )}
@@ -377,7 +378,7 @@ export default function ItemDetailsPageClient({
                       <span>{RU.items.details.calcSecondary}</span>
                     </div>
                     <div className="calc-row">
-                      <span className="k">{statusResult.secondary.label}</span>
+                      <span className="k">{systemText(statusResult.secondary.label)}</span>
                       <span className="v">
                         {formatMetricValue(statusResult.secondary.remainingValue, statusResult.secondary.unit)}
                       </span>

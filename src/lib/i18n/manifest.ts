@@ -1,4 +1,6 @@
 import type { MetadataRoute } from 'next';
+import { translate } from './copy';
+import type { Locale } from './routing';
 
 /**
  * Web app manifest, served by Next at `/manifest.webmanifest`.
@@ -8,17 +10,21 @@ import type { MetadataRoute } from 'next';
  * request never carries the session cookies and the middleware would answer it
  * with a 307 to /login. See the matcher exclusions in `src/middleware.ts`.
  *
- * The strings live here rather than in `@/lib/copy/ru` because they are not UI
- * copy: the manifest is a single static artifact baked per deploy and read by
- * the OS at install time, not something a component renders.
+ * One manifest endpoint has localized copy and start_url, with a shared id
+ * and scope. Language changes never create a second PWA identity.
  */
-export default function manifest(): MetadataRoute.Manifest {
+export function createManifest(locale: Locale = 'ru'): MetadataRoute.Manifest {
   return {
-    name: 'MileKeeper — пробег и обслуживание',
+    id: '/',
+    name: translate(locale, 'MileKeeper — пробег и обслуживание'),
     short_name: 'MileKeeper',
-    description: 'Учёт пробега и обслуживания автомобиля',
-    lang: 'ru',
-    start_url: '/',
+    description: translate(locale, 'Учёт пробега и обслуживания автомобиля'),
+    lang: locale,
+    start_url: locale === 'en' ? '/en' : '/',
+    shortcuts: [
+      { name: 'MileKeeper — RU', url: '/' },
+      { name: 'MileKeeper — EN', url: '/en' },
+    ],
     // Keeps /login and /auth/callback inside the installed app, so the OAuth
     // round-trip does not kick the user out to the browser.
     scope: '/',

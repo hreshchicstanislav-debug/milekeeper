@@ -1,3 +1,4 @@
+import { localeFromPath, stripLocale, localizedPath } from '@/lib/i18n/routing';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
 import { postSessionLogout, postSessionSync } from './sessionSync';
 import type { SessionTokens } from './validateSession';
@@ -187,8 +188,10 @@ export class BrowserSession {
 }
 
 export function authRedirect(state: BrowserAuthState, pathname: string, guest = false): string | null {
-  if (state.phase === 'anon' && !guest && pathname !== '/login' && pathname !== '/auth/callback') return '/login';
-  if (state.phase === 'authed' && pathname === '/login') return '/';
+  const locale = localeFromPath(pathname);
+  pathname = stripLocale(pathname);
+  if (state.phase === 'anon' && !guest && pathname !== '/login' && pathname !== '/auth/callback') return localizedPath('/login', locale);
+  if (state.phase === 'authed' && pathname === '/login') return localizedPath('/', locale);
   return null;
 }
 

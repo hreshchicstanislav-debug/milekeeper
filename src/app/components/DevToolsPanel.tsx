@@ -1,9 +1,10 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { seedDemoData, simulateTripRange, wipeAllData } from '@/lib/actions/devActions';
-import { RU } from '@/lib/copy/ru';
 import { getAppMode, setAppMode, AppMode } from '@/lib/appMode';
 import { getAppNow, setAppNow, advanceAppNow, resetAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
@@ -13,6 +14,7 @@ interface DevToolsPanelProps {
 }
 
 export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) {
+  const { RU, t, intlLocale } = useCopy();
   // Дополнительная проверка для безопасности (не должен рендериться в production)
   if (process.env.NODE_ENV === 'production') {
     return null;
@@ -109,7 +111,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
     try {
       const result = await seedDemoData();
       setStatus(
-        `${RU.devTools.successSeeded}: ${result.serviceItems} сущностей, ${result.odometerEntries} записей пробега, ${result.serviceEvents} событий`
+        `${RU.devTools.successSeeded}: ${result.serviceItems} ${t("сущностей,")} ${result.odometerEntries} ${t("записей пробега,")} ${result.serviceEvents} ${t("событий")}`
       );
       router.refresh();
     } catch (err) {
@@ -123,7 +125,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
   const handleSimulate = async (range: 'day' | 'week' | 'month') => {
     // Only allow simulation in TEST mode
     if (appMode !== AppMode.TEST) {
-      setStatus(`${RU.devTools.statusError}: Симуляция доступна только в режиме тестирования`);
+      setStatus(`${RU.devTools.statusError}: ${t("Симуляция доступна только в режиме тестирования")}`);
       return;
     }
 
@@ -143,7 +145,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
       }
       
       setStatus(
-        `${RU.devTools.successSimulated}: +${result.totalIncrementKm} км за ${result.dayIncrement} дн., ${new Date(result.entry.occurred_at).toLocaleDateString('ru-RU')}`
+        `${RU.devTools.successSimulated}: +${result.totalIncrementKm} ${t("км за")} ${result.dayIncrement} ${t("дн.,")} ${new Date(result.entry.occurred_at).toLocaleDateString(intlLocale)}`
       );
       // Re-render the current page once. No `?_t=` cache-buster: simulateTripRange() is a
       // server action that revalidates the affected paths, and this panel only ever renders
@@ -234,7 +236,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
     try {
       const date = fromDateTimeLocalValue(appNowInput);
       if (isNaN(date.getTime())) {
-        setStatus(`${RU.devTools.statusError}: Неверная дата`);
+        setStatus(`${RU.devTools.statusError}: ${t("Неверная дата")}`);
         return;
       }
       setAppNow(date);
@@ -246,7 +248,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
   };
 
   const formatAppNow = (date: Date): string => {
-    return date.toLocaleString('ru-RU', {
+    return date.toLocaleString(intlLocale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -273,14 +275,15 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
             <div className="dev-tools-mode-toggle">
               <div className="dev-tools-mode-toggle-row">
                 <label htmlFor="app-mode-switch" className="dev-tools-mode-toggle-label">
-                  Режим тестирования
+
+                  {t("Режим тестирования")}
                 </label>
                 <button
                   type="button"
                   id="app-mode-switch"
                   role="switch"
                   aria-checked={appMode === AppMode.TEST}
-                  aria-label={appMode === AppMode.TEST ? 'Режим тестирования включен' : 'Режим тестирования выключен'}
+                  aria-label={appMode === AppMode.TEST ? t("Режим тестирования включен") : t("Режим тестирования выключен")}
                   onClick={handleModeToggle}
                   className={`dev-tools-mode-switch ${appMode === AppMode.TEST ? 'dev-tools-mode-switch-on' : ''}`}
                 >
@@ -288,7 +291,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                 </button>
               </div>
               <p className="dev-tools-mode-toggle-helper">
-                Влияет только на поведение тестовых инструментов. В проде недоступно.
+
+                {t("Влияет только на поведение тестовых инструментов. В проде недоступно.")}
               </p>
             </div>
 
@@ -296,7 +300,7 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
             {appMode === AppMode.TEST && (
               <div className="dev-tools-test-clock">
                 <div className="dev-tools-test-clock-header">
-                  <h3 className="dev-tools-test-clock-title">Тестовое время</h3>
+                  <h3 className="dev-tools-test-clock-title">{t("Тестовое время")}</h3>
                   <div className="dev-tools-test-clock-display">
                     {formatAppNow(appNow)}
                   </div>
@@ -309,7 +313,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                     disabled={isLoading}
                     className="dev-tools-button"
                   >
-                    Сейчас
+
+                    {t("Сейчас")}
                   </button>
                   <button
                     type="button"
@@ -317,7 +322,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                     disabled={isLoading}
                     className="dev-tools-button"
                   >
-                    +1 день
+
+                    {t("+1 день")}
                   </button>
                   <button
                     type="button"
@@ -325,7 +331,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                     disabled={isLoading}
                     className="dev-tools-button"
                   >
-                    +7 дней
+
+                    {t("+7 дней")}
                   </button>
                   <button
                     type="button"
@@ -333,7 +340,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                     disabled={isLoading}
                     className="dev-tools-button"
                   >
-                    +30 дней
+
+                    {t("+30 дней")}
                   </button>
                   <button
                     type="button"
@@ -341,13 +349,15 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                     disabled={isLoading}
                     className="dev-tools-button"
                   >
-                    Сброс
+
+                    {t("Сброс")}
                   </button>
                 </div>
 
                 <div className="dev-tools-test-clock-input">
                   <label htmlFor="app-now-input" className="dev-tools-test-clock-input-label">
-                    Установить вручную:
+
+                    {t("Установить вручную:")}
                   </label>
                   <div className="dev-tools-test-clock-input-row">
                     <input
@@ -368,7 +378,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
                 </div>
 
                 <p className="dev-tools-test-clock-helper">
-                  AppNow используется только в TEST режиме и влияет на симуляции. В LIVE режиме игнорируется.
+
+                  {t("AppNow используется только в TEST режиме и влияет на симуляции. В LIVE режиме игнорируется.")}
                 </p>
               </div>
             )}
@@ -412,7 +423,8 @@ export default function DevToolsPanel({ onExpandedChange }: DevToolsPanelProps) 
               ) : (
                 <div className="dev-tools-simulation-disabled">
                   <p className="dev-tools-simulation-disabled-text">
-                    Симуляция поездок доступна только в режиме тестирования. Переключите режим выше.
+
+                    {t("Симуляция поездок доступна только в режиме тестирования. Переключите режим выше.")}
                   </p>
                 </div>
               )}

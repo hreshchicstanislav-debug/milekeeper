@@ -335,3 +335,56 @@ describe('middleware — non-destructive error handling', () => {
     expect(req.cookies.get('mk_sb_rt')?.value).toBe('rt-0');
   });
 });
+
+describe('middleware — locale routing without auth changes', () => {
+  it.each(['/en', '/en/items', '/en/items/123', '/en/history'])('protects %s with English login', async pathname => {
+    const response = await middleware(request(pathname));
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://milekeeper.test/en/login');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('rewrites English login to the existing public login and overwrites a spoofed locale header', async () => {
+    const req = request('/en/login'); req.headers.set('x-milekeeper-locale', 'ru');
+    const response = await middleware(req);
+    expect(response.headers.get('x-middleware-rewrite')).toBe('https://milekeeper.test/login');
+    expect(response.headers.get('x-middleware-request-x-milekeeper-locale')).toBe('en');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('uses URL locale regardless of a saved cookie or browser language', async () => {
+    const req = request('/login', { mk_locale: 'en' }); req.headers.set('accept-language', 'en-US');
+    const response = await middleware(req);
+    expect(response.headers.get('x-middleware-request-x-milekeeper-locale')).toBe('ru');
+    expect(response.headers.get('location')).toBeNull();
+  });
+  it('keeps the shared callback public and uses only a validated locale preference', async () => {
+    const en = await middleware(request('/auth/callback?code=one-use', { mk_locale: 'en' }));
+    expect(en.headers.get('x-middleware-request-x-milekeeper-locale')).toBe('en');
+    expect(en.headers.get('x-middleware-rewrite')).toBeNull();
+    const bad = await middleware(request('/auth/callback', { mk_locale: 'https://evil.test' }));
+    expect(bad.headers.get('x-middleware-request-x-milekeeper-locale')).toBe('ru');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('switches locale with a fresh session without refreshing or clearing auth cookies', async () => {
+    for (const pathname of ['/items', '/en/items', '/items']) {
+      const req = request(pathname, { mk_sb_at: FRESH_AT, mk_sb_rt: 'rt-0' });
+      const response = await middleware(req);
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(req.cookies.get('mk_sb_rt')?.value).toBe('rt-0');
+      expect(response.status).toBe(200);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('forwards rotated auth cookies through the English rewrite', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ access_token: 'at-new', refresh_token: 'rt-new' }), { status: 200 }));
+    const response = await middleware(request('/en/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' }));
+    expect(response.headers.get('x-middleware-rewrite')).toBe('https://milekeeper.test/history');
+    expect(forwardedRequestCookies(response)).toContain('mk_sb_rt=rt-new');
+    expect(responseCookie(response, 'mk_sb_rt')).toMatchObject({ value: 'rt-new', httpOnly: true });
+  });
+  it('localizes a transient auth failure without clearing the English session', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }));
+    const response = await middleware(request('/en', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' }));
+    expect(response.status).toBe(429); expect(response.headers.get('set-cookie')).toBeNull();
+    expect(await response.text()).toBe('Could not refresh your session. Please reload the page later.');
+  });
+});

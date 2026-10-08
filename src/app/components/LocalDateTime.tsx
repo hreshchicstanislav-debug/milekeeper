@@ -1,6 +1,6 @@
 'use client';
 
-import { formatDateTimeRu } from '@/lib/ui/formatDateTimeRu';
+import { useCopy, useHydrated } from '@/lib/i18n/client';
 
 /**
  * Client component for rendering ISO date strings in local timezone
@@ -24,9 +24,12 @@ interface LocalDateTimeProps {
    * Defaults to '—' if not provided
    */
   fallback?: string;
+  dateOnly?: boolean;
 }
 
-export function LocalDateTime({ iso, fallback = '—' }: LocalDateTimeProps) {
+export function LocalDateTime({ iso, fallback = '—', dateOnly = false }: LocalDateTimeProps) {
+  const { displayDateTime, intlLocale } = useCopy();
+  const hydrated = useHydrated();
   // Handle missing or null/undefined values
   if (!iso) {
     return <>{fallback}</>;
@@ -42,7 +45,11 @@ export function LocalDateTime({ iso, fallback = '—' }: LocalDateTimeProps) {
     }
     
     // Use existing formatter
-    return <>{formatDateTimeRu(date)}</>;
+    // The browser owns the display timezone. A stable SSR placeholder prevents
+    // hydration from retaining a server-timezone value or remounting forms.
+    return <time dateTime={date.toISOString()}>{hydrated
+      ? dateOnly ? date.toLocaleDateString(intlLocale) : displayDateTime(date)
+      : fallback}</time>;
   } catch (error) {
     // If parsing fails, show fallback
     return <>{fallback}</>;

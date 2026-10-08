@@ -1,11 +1,12 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AddServiceItemForm from '../components/AddServiceItemForm';
 import ItemDetailsSheet from '../components/ItemDetailsSheet';
 import StatusRowDetail from '../components/StatusRowDetail';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import type { ServiceItem } from '@/lib/db/types';
 import type { ServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
@@ -20,6 +21,7 @@ interface ItemsPageClientProps {
 }
 
 export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, estimatedOdometer, dailyKmRate = null }: ItemsPageClientProps) {
+  const { RU, path } = useCopy();
   const [selectedItemForDetails, setSelectedItemForDetails] = useState<ServiceItem | null>(null);
   const [editingItem, setEditingItem] = useState<ServiceItem | null>(null);
   const [pendingDetailsItemId, setPendingDetailsItemId] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, es
                   className={`service-item-row clickable ${index === itemsWithLastEvent.length - 1 ? 'last' : ''}`}
                   onClick={() => {
                     // Navigate to item details page (mobile-first approach)
-                    router.push(`/items/${item.id}`);
+                    router.push(path(`/items/${item.id}`));
                   }}
                   role="button"
                   tabIndex={0}
@@ -92,7 +94,7 @@ export default function ItemsPageClient({ itemsWithLastEvent, latestOdometer, es
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       // Navigate to item details page
-                      router.push(`/items/${item.id}`);
+                      router.push(path(`/items/${item.id}`));
                     }
                   }}
                 >

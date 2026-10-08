@@ -1,5 +1,7 @@
 'use client';
 
+import { useCopy } from '@/lib/i18n/client';
+
 import { useState, useEffect } from 'react';
 
 interface StatusRowProps {
@@ -25,6 +27,7 @@ export default function StatusRow({
   onClick,
   className = '',
 }: StatusRowProps) {
+  const { t, systemText } = useCopy();
   const [infoTooltipOpen, setInfoTooltipOpen] = useState(false);
 
   // Close tooltip when clicking outside or pressing Escape
@@ -62,14 +65,14 @@ export default function StatusRow({
     }
   }
 
-  const tooltipText = 'Не можем точно посчитать срок, потому что пробег вносится редко. Добавляй пробег хотя бы раз в неделю — прогноз станет точнее.';
+  const tooltipText = t("Не можем точно посчитать срок, потому что пробег вносится редко. Добавляй пробег хотя бы раз в неделю — прогноз станет точнее.");
 
   return (
     <div className={className}>
       <div className="status-row-header">
         <div className="status-row-title">{title}</div>
         <div className="status-row">
-          <span className="status-text">{statusText}</span>
+          <span className="status-text">{systemText(statusText)}</span>
           {!isPredictionReliable && (
             <div className="status-info-wrapper">
               <button
@@ -78,7 +81,7 @@ export default function StatusRow({
                   e.stopPropagation(); // Prevent parent onClick
                   setInfoTooltipOpen(!infoTooltipOpen);
                 }}
-                aria-label="Почему прогноз неточный"
+                aria-label={t("Почему прогноз неточный")}
                 title={tooltipText}
               >
                 ⓘ

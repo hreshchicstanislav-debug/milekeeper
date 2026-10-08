@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageSwitcher from './LanguageSwitcher';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
@@ -76,6 +77,7 @@ export default function ModalSheet({
         if (dismissOnBackdrop && !busy && event.target === event.currentTarget) onClose();
       }}
     >
+      <div className="modal-locale-control"><LanguageSwitcher /></div>
       {children}
     </dialog>,
     document.body,

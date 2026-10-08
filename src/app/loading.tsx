@@ -1,4 +1,6 @@
-import { RU } from '@/lib/copy/ru';
+'use client';
+
+import { useCopy } from '@/lib/i18n/client';
 
 /**
  * Instant loading state for Home.
@@ -7,6 +9,7 @@ import { RU } from '@/lib/copy/ru';
  * data-dependent blocks (mileage card, rate hint, upcoming list) are placeholders.
  */
 export default function HomeLoading() {
+  const { RU } = useCopy();
   return (
     <>
       <header className="page-header">

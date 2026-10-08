@@ -1,4 +1,6 @@
-import { RU } from '@/lib/copy/ru';
+'use client';
+
+import { useCopy } from '@/lib/i18n/client';
 
 /**
  * Instant loading state for the service items list.
@@ -6,6 +8,7 @@ import { RU } from '@/lib/copy/ru';
  * lands in the same place without a jump.
  */
 export default function ItemsLoading() {
+  const { RU } = useCopy();
   return (
     <>
       <header className="page-header">

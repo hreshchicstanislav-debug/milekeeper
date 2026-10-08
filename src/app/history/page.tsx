@@ -1,6 +1,6 @@
+import { getCopy } from '@/lib/i18n/server';
 import { listOdometerEntries } from '@/lib/actions/odometerActions';
 import Link from 'next/link';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import DeleteLatestMileageButton from './components/DeleteLatestMileageButton';
 import EditLatestMileageButton from './components/EditLatestMileageButton';
@@ -28,6 +28,7 @@ function pickLatestEntry<T extends { occurred_at: string; mileage_km: number }>(
 }
 
 export default async function HistoryPage() {
+  const { RU, formatNumber, path } = await getCopy();
   // One query instead of two: the latest entry is derived from the list we already load,
   // which removes a second round-trip to Supabase (auth + select) from this page.
   const entries = await listOdometerEntries(50);
@@ -42,7 +43,7 @@ export default async function HistoryPage() {
         {entries.length === 0 ? (
           <div className="empty-state">
             <p className="empty-state-message">{RU.history.emptyMessage}</p>
-            <Link href="/" className="empty-state-link">
+            <Link href={path('/')} className="empty-state-link">
               {RU.history.emptyCta}
             </Link>
           </div>

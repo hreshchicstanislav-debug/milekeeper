@@ -1,7 +1,11 @@
+'use client';
+
+import { useCopy } from '@/lib/i18n/client';
 /** Keep the same flex shell and action rail while service data loads. */
 export default function ItemDetailsLoading() {
+  const { t } = useCopy();
   return (
-    <div className="item-details-page-route" aria-busy="true" aria-label="Загрузка элемента">
+    <div className="item-details-page-route" aria-busy="true" aria-label={t("Загрузка элемента")}>
       <div className="item-details-page">
         <div className="item-details-page-shell">
           <div className="item-details-page-scroll">

@@ -1,3 +1,5 @@
+import { localeFromPath, stripLocale, localizedPath, LOCALE_HEADER, LOCALE_COOKIE, callbackLocale } from '@/lib/i18n/routing';
+import { translate } from '@/lib/i18n/copy';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
@@ -20,7 +22,7 @@ import { refreshAccessToken } from '@/lib/auth/refreshSession';
  *
  * - `request.cookies`, so the RSC render that follows in this very request
  *   already sees the new tokens (mutating them rewrites the forwarded
- *   `cookie` header, which `NextResponse.next({ request })` passes downstream);
+ *   `cookie` header, which `proceed()` passes downstream);
  * - `response.cookies`, so the browser stores the new pair for next time.
  *
  * That is what stops the cookies from drifting generations behind the
@@ -57,13 +59,13 @@ function withNoStore(response: NextResponse): NextResponse {
 
 function redirectToLogin(request: NextRequest): NextResponse {
   const url = request.nextUrl.clone();
-  url.pathname = '/login';
+  url.pathname = localizedPath('/login', localeFromPath(request.nextUrl.pathname));
   url.search = '';
   const response = NextResponse.redirect(url);
   // Drop the unusable pair so the next request cannot loop on it.
   response.cookies.set(COOKIE_AT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
   response.cookies.set(COOKIE_RT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
-  return response;
+  return withNoStore(response);
 }
 
 function readSupabaseEnv(): { url: string; anonKey: string } | null {
@@ -73,10 +75,24 @@ function readSupabaseEnv(): { url: string; anonKey: string } | null {
 }
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const originalPath = request.nextUrl.pathname;
+  const locale = originalPath === '/auth/callback'
+    ? callbackLocale(request.cookies.get(LOCALE_COOKIE)?.value) : localeFromPath(originalPath);
+  const pathname = stripLocale(originalPath);
+  // Always overwrite the client-supplied header. Locale never grants access.
+  request.headers.set(LOCALE_HEADER, locale);
+  const proceed = () => {
+    const headers = new Headers(request.headers);
+    if (localeFromPath(originalPath) === 'en' && /^(\/|\/login|\/history|\/items(?:\/[^/]+)?)$/.test(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname;
+      return NextResponse.rewrite(url, { request: { headers } });
+    }
+    return NextResponse.next({ request: { headers } });
+  };
 
-  if (isPublicPath(pathname)) {
-    return withNoStore(NextResponse.next());
+  if (isPublicPath(originalPath) || originalPath === '/en/login') {
+    return withNoStore(proceed());
   }
 
   const devGuest = isDevGuestEnabled();
@@ -84,21 +100,21 @@ export async function middleware(request: NextRequest) {
   const refreshToken = request.cookies.get(COOKIE_RT)?.value ?? null;
 
   if (!accessToken || !refreshToken) {
-    return devGuest ? withNoStore(NextResponse.next()) : redirectToLogin(request);
+    return devGuest ? withNoStore(proceed()) : redirectToLogin(request);
   }
 
   // Timing hint only — see src/lib/auth/accessToken.ts. A "fresh" token is not
   // trusted here, it is merely not worth a refresh round-trip; Supabase Auth
   // still validates it in getRlsClientAndUserId() and RLS still gates the data.
   if (isAccessTokenFresh(accessToken)) {
-    return withNoStore(NextResponse.next());
+    return withNoStore(proceed());
   }
 
   const env = readSupabaseEnv();
   if (!env) {
     // Misconfiguration is not an auth failure — let the server client raise the
     // explicit "Missing SUPABASE_URL" error rather than silently logging out.
-    return withNoStore(NextResponse.next());
+    return withNoStore(proceed());
   }
 
   const result = await refreshAccessToken(refreshToken, env);
@@ -108,7 +124,7 @@ export async function middleware(request: NextRequest) {
       return redirectToLogin(request);
     }
     // Dev-guest: drop the dead pair but let the page render its empty state.
-    const passthrough = NextResponse.next();
+    const passthrough = proceed();
     passthrough.cookies.set(COOKIE_AT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
     passthrough.cookies.set(COOKIE_RT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
     return withNoStore(passthrough);
@@ -117,9 +133,9 @@ export async function middleware(request: NextRequest) {
   if (result.status === 'error') {
     // Do not render with expired credentials: an RSC auth failure could bounce
     // to login while the browser still has a session, creating a redirect loop.
-    if (devGuest) return withNoStore(NextResponse.next());
+    if (devGuest) return withNoStore(proceed());
     return withNoStore(new NextResponse(
-      'Не удалось обновить сессию. Пожалуйста, повторите загрузку страницы позже.',
+      translate(locale, 'Не удалось обновить сессию. Пожалуйста, повторите загрузку страницы позже.'),
       { status: result.kind === 'rate-limit' ? 429 : 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
     ));
@@ -132,7 +148,7 @@ export async function middleware(request: NextRequest) {
   request.cookies.set(COOKIE_RT, refresh_token);
 
   // Response side: the browser stores it for the next request.
-  const response = NextResponse.next({ request });
+  const response = proceed();
   response.cookies.set(COOKIE_AT, access_token, {
     ...AUTH_COOKIE_OPTIONS,
     maxAge: AUTH_COOKIE_MAX_AGE,

@@ -1,3 +1,4 @@
+import { getCopy } from '@/lib/i18n/server';
 import { getMaxMileageEntry, listOdometerEntries } from '@/lib/actions/odometerActions';
 import { listServiceItems, listLastServiceEventsForItems } from '@/lib/actions/serviceActions';
 import { computeConfidence } from '@/lib/prediction/dailyRate';
@@ -16,7 +17,6 @@ import HomeContentClient from './components/HomeContentClient';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 import Link from 'next/link';
-import { RU, formatNumber } from '@/lib/copy/ru';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 
 // Force dynamic rendering to ensure fresh data on every request
@@ -68,6 +68,7 @@ function logDevGuestModeOnce() {
 }
 
 export default async function Home() {
+  const { RU, t, formatNumber } = await getCopy();
   // Start DB profiler scope (dev-only)
   const profiler = startRequestScope('home');
   logDevGuestModeOnce();
@@ -413,7 +414,7 @@ export default async function Home() {
         itemWithStatus.statusResult = {
           ...itemWithStatus.statusResult,
           status: 'SOON',
-          why: itemWithStatus.statusResult.why || 'Скоро обслуживание',
+          why: itemWithStatus.statusResult.why || t("Скоро обслуживание"),
         };
         // Also update urgency for consistency
         itemWithStatus.urgency = 'SOON';
@@ -537,12 +538,12 @@ export default async function Home() {
           <p className="prediction-hint-text">
             {dailyRate !== null && dailyRate > 0 ? (
               isFallbackRate ? (
-                <>Средний пробег: ~{formatNumber(Math.round(dailyRate))} {RU.common.km}/день</>
+                <>{t("Средний пробег: ~")}{formatNumber(Math.round(dailyRate))} {RU.common.km}{t("/день")}</>
               ) : (
-                <>Средний пробег за последние 60 дней: ~{formatNumber(Math.round(dailyRate))} {RU.common.km}/день</>
+                <>{t("Средний пробег за последние 60 дней: ~")}{formatNumber(Math.round(dailyRate))} {RU.common.km}{t("/день")}</>
               )
             ) : (
-              <>Средний пробег: недостаточно данных</>
+              <>{t("Средний пробег: недостаточно данных")}</>
             )}
           </p>
         </div>
