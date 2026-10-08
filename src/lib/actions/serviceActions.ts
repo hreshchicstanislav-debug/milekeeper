@@ -349,6 +349,22 @@ export async function addServiceEvent(
   
   const { supabase, userId } = await getRlsClientAndUserId();
   
+  // Reject unavailable items before inserting. The composite database FK is
+  // the final guarantee, including when an item changes after this lookup.
+  const { data: item, error: itemError } = await supabase
+    .from('service_items')
+    .select('id')
+    .eq('id', input.serviceItemId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (itemError) {
+    throw new Error('Не удалось проверить элемент обслуживания');
+  }
+  if (!item) {
+    throw new Error('Элемент обслуживания не найден или недоступен');
+  }
+
   // Fetch max mileage entry to validate mileage (matches what's shown on home page)
   const maxMileageEntry = await getMaxMileageEntry('AddServiceEvent');
   
