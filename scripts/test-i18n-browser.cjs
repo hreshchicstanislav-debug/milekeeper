@@ -37,6 +37,21 @@ let browser, dev, fixture;
     });
     const page = await context.newPage();
     const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const checkEnglish = async () => {
+        const copy = await page.locator('body').evaluate(body => {
+            const attributes = [...body.querySelectorAll('[aria-label],[title],[placeholder],[alt]')]
+                .filter(element => element.getClientRects().length)
+                .flatMap(element => ['aria-label', 'title', 'placeholder', 'alt'].map(name => element.getAttribute(name) || ''));
+            return body.innerText + '\n' + attributes.join('\n');
+        });
+        const systemCopy = ['Моё масло двигателя', 'Моя заметка — не переводить', 'Личная запись', 'Пользовательский комментарий']
+            .reduce((text, personal) => text.replaceAll(personal, ''), copy);
+        assert(!/[А-Яа-яЁё]/.test(systemCopy), 'Russian system copy remains: ' + systemCopy);
+    };
+    const checkLayout = async () => {
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Horizontal overflow');
+    };
     await page.goto('http://localhost:3101/en');
     await page.waitForURL('**/en/login');
     await page.getByRole('heading', { name: 'Sign in', exact: true }).waitFor();
@@ -127,7 +142,6 @@ let browser, dev, fixture;
     }
     await page.setViewportSize({ width: 390, height: 844 });
     console.log('PASS all English screens contain no Russian system copy and fit 320/390/1280px');
-    assert.deepEqual(errors, [], 'Browser errors');
     await page.screenshot({ path: path.join(artifacts, 'en-details.png'), fullPage: true });
     const manifest = await context.request.get('http://localhost:3101/manifest.webmanifest?lang=en');
     const data = await manifest.json();
@@ -144,6 +158,124 @@ let browser, dev, fixture;
     await page.waitForURL('http://localhost:3101/en');
     await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();
     console.log('PASS repeat mocked Google sign-in remains English');
+
+    // Both locales: direct URLs, mobile layouts, validation and cancel-only dialogs.
+    // Every submitted form below is invalid before any server write is attempted.
+    for (const locale of ['en', 'ru']) {
+        const en = locale === 'en', prefix = en ? '/en' : '';
+        const labels = en ? {
+            home: 'Home', items: 'Maintenance items', history: 'Odometer history',
+            addMileage: 'Add odometer reading', mileage: 'Enter odometer reading', save: 'Save', cancel: 'Cancel',
+            mileageError: 'Please enter a valid odometer reading', addItem: 'Add item', itemName: 'For example: Engine oil',
+            intervalError: 'Mileage tracking requires an interval in km.', editReading: 'Edit latest reading', positiveError: 'The odometer reading must be a positive number',
+            deleteReading: 'Delete latest reading', confirmDelete: 'Are you sure?', replacement: 'Record replacement', signOut: 'Sign out',
+            signIn: 'Sign in', google: 'Sign in with Google', calc: 'Calculation',
+        } : {
+            home: 'Главная', items: 'Элементы обслуживания', history: 'История пробега',
+            addMileage: 'Добавить пробег', mileage: 'Введите пробег', save: 'Сохранить', cancel: 'Отмена',
+            mileageError: 'Пожалуйста, введите корректный пробег', addItem: 'Добавить элемент', itemName: 'Например: Масло двигателя',
+            intervalError: 'Для режима по пробегу нужен интервал в км.', editReading: 'Редактировать последнюю запись', positiveError: 'Пробег должен быть положительным числом',
+            deleteReading: 'Удалить последнюю запись', confirmDelete: 'Вы уверены?', replacement: 'Отметить замену', signOut: 'Выйти',
+            signIn: 'Вход', google: 'Войти через Google', calc: 'Расчёт',
+        };
+        for (const width of [320, 390, 1280]) {
+            await page.setViewportSize({ width, height: 844 });
+            for (const [route, heading] of [[prefix || '/', labels.home], [prefix + '/items', labels.items], [prefix + '/history', labels.history]]) {
+                await page.goto('http://localhost:3101' + route);
+                await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+                assert.equal(await page.locator('html').getAttribute('lang'), locale);
+                await checkLayout();
+                if (en) await checkEnglish();
+            }
+        }
+        await page.setViewportSize({ width: 320, height: 844 });
+        await page.goto('http://localhost:3101' + (prefix || '/'));
+        await page.getByRole('button', { name: labels.addMileage, exact: true }).click();
+        const dialog = page.getByRole('dialog');
+        await dialog.getByPlaceholder(labels.mileage).fill('0');
+        await dialog.getByRole('button', { name: labels.save, exact: true }).click();
+        await dialog.getByText(labels.mileageError, { exact: true }).waitFor();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await page.screenshot({ path: path.join(artifacts, locale + '-form-error.png'), fullPage: true });
+        await dialog.getByRole('button', { name: labels.cancel, exact: true }).click();
+
+        await page.getByRole('link', { name: en ? '🔧 Items' : '🔧 Элементы', exact: false }).click();
+        await page.waitForURL('**' + prefix + '/items');
+        await page.getByRole('button', { name: labels.addItem, exact: true }).click();
+        await dialog.getByPlaceholder(labels.itemName).fill('   ');
+        assert.equal(await dialog.locator('button[type="submit"]').isDisabled(), true, 'Blank names cannot be saved');
+        await dialog.getByPlaceholder(labels.itemName).fill('Fixture draft');
+        await dialog.locator('form').evaluate(form => { form.noValidate = true; });
+        await dialog.locator('button[type="submit"]').click();
+        await dialog.getByText(labels.intervalError, { exact: true }).waitFor();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await dialog.getByRole('button', { name: labels.cancel, exact: true }).click();
+
+        await page.goto('http://localhost:3101' + prefix + '/items/' + fixture.id + '?tab=calc');
+        await page.getByRole('button', { name: labels.calc, exact: true }).waitFor();
+        await page.getByRole('button', { name: labels.replacement, exact: true }).click();
+        await dialog.getByPlaceholder(labels.mileage).fill('0');
+        await dialog.getByRole('button', { name: labels.save, exact: true }).click();
+        await dialog.getByText(labels.positiveError, { exact: true }).waitFor();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await dialog.getByRole('button', { name: labels.cancel, exact: true }).click();
+
+        await page.getByRole('link', { name: en ? '📋 History' : '📋 История', exact: false }).click();
+        await page.getByRole('button', { name: labels.editReading, exact: true }).click();
+        await dialog.getByPlaceholder(labels.mileage).fill('0');
+        await dialog.getByRole('button', { name: labels.save, exact: true }).click();
+        await dialog.getByText(labels.positiveError, { exact: true }).waitFor();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await dialog.getByRole('button', { name: labels.cancel, exact: true }).click();
+        await page.getByRole('button', { name: labels.deleteReading, exact: true }).click();
+        await dialog.getByRole('heading', { name: labels.confirmDelete, exact: true }).waitFor();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await dialog.getByRole('button', { name: labels.cancel, exact: true }).click();
+        await page.getByRole('button', { name: labels.signOut, exact: true }).click();
+        await checkLayout();
+        if (en) await checkEnglish();
+        await dialog.getByRole('button', { name: labels.signOut, exact: true }).click();
+        await page.waitForURL('**' + prefix + '/login');
+        await page.getByRole('heading', { name: labels.signIn, exact: true }).waitFor();
+        for (const route of [prefix || '/', prefix + '/items', prefix + '/history', prefix + '/items/' + fixture.id]) {
+            await page.goto('http://localhost:3101' + route);
+            await page.waitForURL('**' + prefix + '/login');
+            await page.getByRole('heading', { name: labels.signIn, exact: true }).waitFor();
+        }
+        await page.getByRole('button', { name: labels.google, exact: true }).click();
+        await page.waitForURL('http://localhost:3101' + (prefix || '/'));
+        await page.getByRole('heading', { name: labels.home, exact: true }).waitFor();
+        console.log('PASS ' + locale.toUpperCase() + ' direct routes, mobile layouts, form errors, dialogs, anonymous guards and mocked OAuth/logout');
+    }
+    // A known API error remains localized, while the shared endpoint stays unprefixed.
+    await page.route('**/api/service-events?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Не удалось выполнить действие. Попробуйте ещё раз.' }) }));
+    await page.goto('http://localhost:3101/en/items/' + fixture.id);
+    await page.locator('.item-history-error').getByText('Could not complete the action. Please try again.', { exact: true }).waitFor();
+    await checkEnglish();
+    await page.unroute('**/api/service-events?*');
+    console.log('PASS English API error message');
+    for (const locale of ['ru', 'en']) {
+        const anonymous = await browser.newContext({ viewport: { width: 320, height: 844 } });
+        await anonymous.route('**/*', route => {
+            const url = new URL(route.request().url());
+            return ['localhost', '127.0.0.1'].includes(url.hostname) && ['3101', '54329'].includes(url.port) ? route.continue() : route.abort();
+        });
+        await anonymous.addCookies([{ name: 'mk_locale', value: locale, url: 'http://localhost:3101' }]);
+        const callback = await anonymous.newPage();
+        callback.on('pageerror', error => errors.push(error.message));
+        await callback.goto('http://localhost:3101/auth/callback?error=access_denied');
+        await callback.getByRole('alert').getByText(locale === 'en' ? 'Google did not confirm your sign-in. Please sign in again.' : 'Google не подтвердил вход. Повторите вход.', { exact: true }).waitFor();
+        await callback.getByRole('link', { name: locale === 'en' ? 'Back to sign-in' : 'Вернуться ко входу', exact: true }).click();
+        await callback.waitForURL('**' + (locale === 'en' ? '/en/login' : '/login'));
+        await anonymous.close();
+    }
+    console.log('PASS shared callback denial returns to the originating locale');
+    assert.deepEqual(errors, [], 'Browser page errors');
     await context.close();
     console.log('Artifacts: ' + artifacts);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

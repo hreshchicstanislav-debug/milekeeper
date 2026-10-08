@@ -1,0 +1,13 @@
+# Keep local credentials and generated output out of source deployments.
+.env*
+**/.env*
+!.env.example
+!supabase/.env.example
+.git
+.vercel
+.next
+node_modules
+supabase/.temp
+*.tsbuildinfo
+.DS_Store
+**/.DS_Store
