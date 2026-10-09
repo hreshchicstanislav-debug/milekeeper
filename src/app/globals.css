@@ -120,6 +120,20 @@
 .demo-link-button { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; width: 100%; }
 .login-demo-button { margin-bottom: 12px; }
 .demo-back { display: flex; align-items: center; min-height: 44px; color: var(--control-link-color); font-size: 14px; }
+.demo-about { justify-self: start; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--control-link-color); font: inherit; font-size: 14px; cursor: pointer; }
+.demo-welcome { position: fixed; inset: 0; margin: auto; width: calc(100% - 32px); max-width: 430px; max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--surface-border); border-radius: 20px; background: var(--surface-bg, #fff); color: var(--text-primary, #111); overflow-y: auto; overscroll-behavior: contain; }
+.demo-welcome::backdrop { background: rgba(0, 0, 0, 0.4); }
+.demo-welcome-controls { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: -8px -8px 16px 0; }
+.demo-welcome-controls .language-switcher { padding: 0; }
+.demo-welcome-close { flex: 0 0 44px; height: 44px; border: 0; border-radius: 12px; background: var(--app-bg, #f2f2f7); color: inherit; font-size: 26px; cursor: pointer; }
+.demo-welcome h2 { font-size: var(--text-heading); line-height: 1.25; margin-bottom: 16px; overflow-wrap: break-word; }
+.demo-welcome-description, .demo-welcome-note { font-size: 15px; line-height: 1.5; }
+.demo-welcome-description p + p { margin-top: 12px; }
+.demo-welcome-note { margin: 20px 0; padding: 16px; border-radius: var(--radius-md); background: var(--app-bg, #f2f2f7); }
+.demo-welcome-note p { margin-top: 6px; color: #58585d; }
+.demo-welcome .add-mileage-button { width: 100%; white-space: normal; }
+.demo-about:focus-visible, .demo-welcome button:focus-visible { outline: 2px solid var(--control-link-color); outline-offset: 2px; }
+/* No transitions or animations: opening is also immediate with reduced motion. */
 
 /* Simple reset */
 * {

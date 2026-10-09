@@ -6,6 +6,7 @@ import { demoCopy, formatDemoSoon } from '@/lib/demo/copy';
 import type { DemoSnapshot } from '@/lib/demo/snapshot';
 import StatusRowCompact from '../components/StatusRowCompact';
 import StatusRowDetail from '../components/StatusRowDetail';
+import DemoWelcome from './DemoWelcome';
 
 export default function DemoDashboard({ snapshot }: { snapshot: DemoSnapshot }) {
   const { locale } = useCopy();
@@ -15,6 +16,7 @@ export default function DemoDashboard({ snapshot }: { snapshot: DemoSnapshot }) 
   const date = (day: string) => new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
   return <div className="demo-dashboard">
     <div className="demo-banner"><strong>MileKeeper</strong><span>{copy.badge}</span></div>
+    <DemoWelcome />
     <a className="demo-back" href={login}>{copy.back}</a>
     <h1>{copy.title}</h1>
     <p className="demo-muted">{copy.intro}</p>
