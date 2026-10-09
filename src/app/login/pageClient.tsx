@@ -6,6 +6,8 @@ import { useCopy } from '@/lib/i18n/client';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
+import { localizedPath } from '@/lib/i18n/routing';
+import { loginChoiceCopy } from '@/lib/demo/copy';
 
 export default function LoginPageClient() {
   const { t, errorMessageText, locale } = useCopy();
@@ -75,6 +77,9 @@ export default function LoginPageClient() {
         </div>
       )}
 
+      <a className="add-mileage-button demo-link-button login-demo-button" href={localizedPath('/demo', locale)}>
+        {loginChoiceCopy[locale].demo}
+      </a>
       <button
         type="button"
         onClick={handleGoogleLogin}
@@ -82,7 +87,7 @@ export default function LoginPageClient() {
         className="add-mileage-button"
         style={{ width: '100%' }}
       >
-        {isLoading ? t("Открываем Google…") : t("Войти через Google")}
+        {isLoading ? t("Открываем Google…") : loginChoiceCopy[locale].google}
       </button>
 
       <div style={{ marginTop: 'var(--sp-4, 1rem)', fontSize: '0.875rem', color: 'rgba(0,0,0,0.6)' }}>
@@ -92,4 +97,3 @@ export default function LoginPageClient() {
     </div>
   );
 }
-

@@ -38,6 +38,26 @@ function forwardedRequestCookies(response: Response): string | null {
 
 const fetchMock = vi.fn();
 
+describe('middleware — isolated public demo', () => {
+  it.each(['/demo', '/en/demo'])('never refreshes or changes cookies on %s, including stale sessions', async pathname => {
+    for (const cookies of [undefined, { mk_sb_at: FRESH_AT, mk_sb_rt: 'existing' }, { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'expired' }]) {
+      const req = request(pathname, cookies);
+      const before = req.cookies.toString();
+      const response = await middleware(req);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(req.cookies.toString()).toBe(before);
+      expect(response.headers.get('location')).toBeNull();
+      if (pathname === '/en/demo') expect(response.headers.get('x-middleware-rewrite')).toBe('https://milekeeper.test/demo');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it.each(['/', '/items', '/history', '/items/123', '/en/items', '/en/history', '/demo-other', '/demo/items', '/en/demo/items'])('keeps %s protected', async pathname => {
+    expect((await middleware(request(pathname))).status).toBe(307);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);

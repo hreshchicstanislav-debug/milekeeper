@@ -89,6 +89,38 @@
   --surface-border: rgba(0, 0, 0, 0.08); /* Light border for surfaces - iOS subtlety */
 }
 
+/* Public demo uses the same compact MileKeeper canvas without private chrome. */
+.demo-shell .app-main { padding: 12px 16px 24px; }
+.demo-dashboard { display: grid; gap: 16px; }
+.demo-banner { position: sticky; top: 0; z-index: 20; background: var(--app-bg); padding: 12px 0; border-bottom: 1px solid var(--divider); display: grid; gap: 4px; }
+.demo-banner strong { font-size: 18px; }
+.demo-banner span { font-size: 13px; color: #58585d; }
+.demo-dashboard h1 { font-size: var(--text-title); line-height: 1.2; }
+.demo-dashboard h2 { font-size: var(--text-subheading); margin-bottom: 12px; }
+.demo-muted, .demo-explanation { color: #58585d; font-size: 14px; line-height: 1.5; }
+.demo-date { font-size: 13px; color: #58585d; }
+.demo-card { background: var(--surface-bg); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--surface-border); }
+.demo-odometer { font-size: var(--text-display); font-weight: 600; line-height: 1.2; margin: 8px 0 20px; font-variant-numeric: tabular-nums; }
+.demo-odometer span { font-size: 18px; font-weight: 400; }
+.demo-facts { display: grid; gap: 16px; }
+.demo-facts dt { color: #58585d; font-size: 13px; margin-bottom: 4px; }
+.demo-facts dd { font-size: 20px; font-variant-numeric: tabular-nums; }
+.demo-facts small { display: block; color: #58585d; margin-top: 4px; }
+.demo-rows { padding: 0; overflow: hidden; }
+.demo-item + .demo-item { border-top: 1px solid var(--divider); }
+.demo-item .status-row-detail { padding: 16px 16px 12px; }
+.demo-item-meta { padding: 0 16px 16px; display: grid; gap: 4px; font-size: 12px; color: #58585d; }
+.demo-rows .status-row-compact { flex-wrap: wrap; row-gap: 6px; padding: 16px; }
+.demo-rows .status-row-compact + .status-row-compact { border-top: 1px solid var(--divider); }
+.demo-rows .status-row-compact-title { white-space: normal; overflow: visible; text-overflow: clip; }
+.demo-rows .status-row-compact-right { margin-left: auto; max-width: 100%; }
+.demo-rows .status-row-detail-title { white-space: normal; }
+.demo-explanation { margin-top: 8px; }
+.demo-exit { display: grid; gap: 16px; }
+.demo-link-button { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; width: 100%; }
+.login-demo-button { margin-bottom: 12px; }
+.demo-back { display: flex; align-items: center; min-height: 44px; color: var(--control-link-color); font-size: 14px; }
+
 /* Simple reset */
 * {
   box-sizing: border-box;

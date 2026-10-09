@@ -2,13 +2,13 @@
 import { usePathname } from 'next/navigation';
 import { useCopy } from '@/lib/i18n/client';
 import { localizedPath, rememberLocale, type Locale } from '@/lib/i18n/routing';
-export default function LanguageSwitcher() {
+export default function LanguageSwitcher({ persistPreference = true }: { persistPreference?: boolean }) {
   const { locale, t } = useCopy();
   const pathname = usePathname();
   if (pathname === '/auth/callback') return null;
   const select = (next: Locale) => {
     if (next === locale) return;
-    rememberLocale(next);
+    if (persistPreference) rememberLocale(next);
     // Native history integrates with Next navigation without remounting forms.
     const destination = localizedPath(window.location.pathname, next) + window.location.search + window.location.hash;
     window.history.pushState(null, '', destination);

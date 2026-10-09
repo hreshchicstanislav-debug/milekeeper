@@ -1,5 +1,6 @@
 import { localeFromPath, stripLocale, localizedPath, LOCALE_HEADER, LOCALE_COOKIE, callbackLocale } from '@/lib/i18n/routing';
 import { translate } from '@/lib/i18n/copy';
+import { isDemoPath } from '@/lib/demo/routing';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
@@ -83,7 +84,7 @@ export async function middleware(request: NextRequest) {
   request.headers.set(LOCALE_HEADER, locale);
   const proceed = () => {
     const headers = new Headers(request.headers);
-    if (localeFromPath(originalPath) === 'en' && /^(\/|\/login|\/history|\/items(?:\/[^/]+)?)$/.test(pathname)) {
+    if (localeFromPath(originalPath) === 'en' && /^(\/|\/login|\/demo|\/history|\/items(?:\/[^/]+)?)$/.test(pathname)) {
       const url = request.nextUrl.clone();
       url.pathname = pathname;
       return NextResponse.rewrite(url, { request: { headers } });
@@ -91,7 +92,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request: { headers } });
   };
 
-  if (isPublicPath(originalPath) || originalPath === '/en/login') {
+  if (isDemoPath(originalPath) || isPublicPath(originalPath) || originalPath === '/en/login') {
     return withNoStore(proceed());
   }
 

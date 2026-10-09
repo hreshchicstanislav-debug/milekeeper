@@ -37,7 +37,63 @@ let browser, dev, fixture;
     });
     const page = await context.newPage();
     const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
+    const browserRequests = [], providerRequests = [], demoConsoleErrors = [];
+    let inDemo = false;
+    page.on('console', message => { if (inDemo && message.type() === 'error') demoConsoleErrors.push(message.text()); });
+    page.on('request', request => browserRequests.push({ url: request.url(), method: request.method(), action: request.headers()['next-action'] }));
+    fixture.server.on('request', request => providerRequests.push(request.url));
+    page.on('pageerror', error => { errors.push(error.message); console.error('PAGEERROR at ' + page.url() + ': ' + error.message); });
+    const testDemo = async authenticated => {
+        await page.waitForLoadState('networkidle');
+        const stored = async () => ({
+            cookies: (await context.cookies()).sort((a, b) => a.name.localeCompare(b.name)),
+            storage: await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } })),
+        });
+        const before = await stored();
+        const providerStart = providerRequests.length, browserStart = browserRequests.length;
+        inDemo = true;
+        for (const locale of ['ru', 'en']) {
+            const prefix = locale === 'en' ? '/en' : '';
+            await page.goto('http://localhost:3101' + prefix + '/demo');
+            await page.getByText(locale === 'en' ? 'Demo · fictional data' : 'Демонстрация · вымышленные данные', { exact: true }).waitFor();
+            await page.reload();
+            await page.waitForLoadState('networkidle');
+            assert.equal(await page.locator('html').getAttribute('lang'), locale);
+            assert.equal(await page.locator('nav').count(), 0, 'Demo mounted private navigation');
+            const text = await page.locator('body').innerText();
+            assert(text.includes(locale === 'en' ? '122,280' : '122\u00a0280'), 'Derived odometer absent');
+            assert(text.includes(locale === 'en' ? 'Not enough data' : 'Недостаточно данных'));
+            if (locale === 'en') assert(!/[А-Яа-яЁё]/.test(text), 'Russian demo copy');
+            for (const width of [320, 360, 390, 430, 1280]) {
+                await page.setViewportSize({ width, height: 844 });
+                assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Demo overflow ' + locale + ' ' + width);
+                assert.deepEqual(await page.locator('.demo-rows .status-row-compact-title, .demo-rows .status-row-detail-title').evaluateAll(elements => elements.filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent)), [], 'Truncated demo titles');
+                if (width === 320 || width === 1280) await page.screenshot({ path: path.join(artifacts, `demo-${authenticated ? 'authed' : 'guest'}-${locale}-${width}.png`), fullPage: true });
+                if (width === 430) await page.screenshot({ path: path.join(artifacts, `demo-${authenticated ? 'authed' : 'guest'}-${locale}-430-viewport.png`) });
+            }
+            await page.locator('.demo-exit').scrollIntoViewIfNeeded();
+            const banner = await page.locator('.demo-banner').boundingBox();
+            assert(banner && banner.y >= 0 && banner.y + banner.height <= 844, 'Persistent demo label scrolled away');
+            await page.getByRole('button', { name: locale === 'en' ? 'RU' : 'EN', exact: true }).click();
+            await page.waitForURL('http://localhost:3101' + (locale === 'en' ? '' : '/en') + '/demo');
+            await page.waitForLoadState('networkidle');
+            await page.goBack(); await page.waitForLoadState('networkidle');
+            await page.getByRole('heading', { name: locale === 'en' ? 'Mileage and maintenance' : 'Пробег и обслуживание', exact: true }).waitFor();
+            assert.equal(await page.locator('html').getAttribute('lang'), locale);
+            await page.goForward(); await page.waitForLoadState('networkidle');
+            await page.getByRole('heading', { name: locale === 'en' ? 'Пробег и обслуживание' : 'Mileage and maintenance', exact: true }).waitFor();
+            assert.equal(await page.locator('html').getAttribute('lang'), locale === 'en' ? 'ru' : 'en');
+        }
+        await page.goto('http://localhost:3101/en/demo');
+        await page.waitForLoadState('networkidle');
+        assert.deepEqual(await stored(), before, 'Demo changed account cookies/storage/preferences');
+        assert.deepEqual(providerRequests.slice(providerStart), [], 'Demo made server or browser provider requests');
+        assert.deepEqual(browserRequests.slice(browserStart).filter(r => new URL(r.url).pathname.startsWith('/api/') || r.action || r.method !== 'GET'), [], 'Demo made personal API/server-action requests');
+        assert.deepEqual(demoConsoleErrors, [], 'Demo browser console errors');
+        inDemo = false;
+        await page.setViewportSize({ width: 390, height: 844 });
+        console.log('PASS ' + (authenticated ? 'authenticated' : 'anonymous') + ' demo RU/EN, reload, Back/Forward, 320–430/1280px, no provider/API/actions/storage changes');
+    };
     const checkEnglish = async () => {
         const copy = await page.locator('body').evaluate(body => {
             const attributes = [...body.querySelectorAll('[aria-label],[title],[placeholder],[alt]')]
@@ -64,14 +120,32 @@ let browser, dev, fixture;
     await page.reload();
     await page.getByRole('heading', { name: 'Вход', exact: true }).waitFor();
     console.log('PASS RU switch and reload');
+    await page.screenshot({ path: path.join(artifacts, 'login-ru.png') });
+    await page.getByRole('link', { name: 'Посмотреть демо', exact: true }).click();
+    await page.waitForURL('http://localhost:3101/demo');
+    await page.getByRole('heading', { name: 'Пробег и обслуживание', exact: true }).waitFor();
+    await testDemo(false);
+    await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
+    await page.waitForURL('http://localhost:3101/en/login');
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).waitFor();
+    await page.getByRole('link', { name: 'Explore demo', exact: true }).waitFor();
+    await page.screenshot({ path: path.join(artifacts, 'login-en.png') });
+    console.log('PASS both login choices and guest demo entry/exit');
+    await page.goto('http://localhost:3101/login');
+    await page.getByRole('heading', { name: 'Вход', exact: true }).waitFor();
     await page.getByRole('button', { name: 'EN', exact: true }).click();
     await page.waitForURL('**/en/login');
-    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
     await page.waitForURL('http://localhost:3101/en');
     await page.goto('http://localhost:3101/en');
     await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Add odometer reading', exact: true }).waitFor();
     console.log('PASS authenticated English home');
+    await testDemo(true);
+    await page.getByRole('link', { name: 'Go to my own data', exact: true }).click();
+    await page.waitForURL('http://localhost:3101/en');
+    await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();
+    console.log('PASS demo exit reuses existing account and keeps its session');
     await page.getByRole('button', { name: 'RU', exact: true }).click();
     await page.waitForURL('http://localhost:3101/');
     await page.getByRole('heading', { name: 'Главная', exact: true }).waitFor();
@@ -154,7 +228,7 @@ let browser, dev, fixture;
     await page.getByRole('heading', { name: 'Sign in', exact: true }).waitFor();
     console.log('PASS logout to English login');
     // Repeat the same OAuth path after logout.
-    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
     await page.waitForURL('http://localhost:3101/en');
     await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();
     console.log('PASS repeat mocked Google sign-in remains English');
@@ -169,7 +243,7 @@ let browser, dev, fixture;
             mileageError: 'Please enter a valid odometer reading', addItem: 'Add item', itemName: 'For example: Engine oil',
             intervalError: 'Mileage tracking requires an interval in km.', editReading: 'Edit latest reading', positiveError: 'The odometer reading must be a positive number',
             deleteReading: 'Delete latest reading', confirmDelete: 'Are you sure?', replacement: 'Record replacement', signOut: 'Sign out',
-            signIn: 'Sign in', google: 'Sign in with Google', calc: 'Calculation',
+            signIn: 'Sign in', google: 'Continue with Google', calc: 'Calculation',
         } : {
             home: 'Главная', items: 'Элементы обслуживания', history: 'История пробега',
             addMileage: 'Добавить пробег', mileage: 'Введите пробег', save: 'Сохранить', cancel: 'Отмена',
@@ -267,7 +341,7 @@ let browser, dev, fixture;
         });
         await anonymous.addCookies([{ name: 'mk_locale', value: locale, url: 'http://localhost:3101' }]);
         const callback = await anonymous.newPage();
-        callback.on('pageerror', error => errors.push(error.message));
+        callback.on('pageerror', error => { errors.push(error.message); console.error('PAGEERROR at ' + callback.url() + ': ' + error.message); });
         await callback.goto('http://localhost:3101/auth/callback?error=access_denied');
         await callback.getByRole('alert').getByText(locale === 'en' ? 'Google did not confirm your sign-in. Please sign in again.' : 'Google не подтвердил вход. Повторите вход.', { exact: true }).waitFor();
         await callback.getByRole('link', { name: locale === 'en' ? 'Back to sign-in' : 'Вернуться ко входу', exact: true }).click();

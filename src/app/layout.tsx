@@ -1,13 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import BottomNav from './components/BottomNav';
-import TopBreadcrumbsBar from './components/TopBreadcrumbsBar';
 import { ToastProvider } from './components/ToastProvider';
-import ScrollLockRouteGuard from './components/ScrollLockRouteGuard';
-import AuthGate from './components/AuthGate';
 import { getCopy } from '@/lib/i18n/server';
 import { LocaleProvider } from '@/lib/i18n/client';
-import LanguageSwitcher from './components/LanguageSwitcher';
+import AppShell from './components/AppShell';
 export async function generateMetadata(): Promise<Metadata> {
   const { RU, locale } = await getCopy();
   return { title: RU.metadata.title, description: RU.metadata.description, manifest: locale === 'en' ? '/manifest.webmanifest?lang=en' : '/manifest.webmanifest' };
@@ -34,20 +30,10 @@ export default async function RootLayout({
       <body>
         <LocaleProvider initialLocale={locale}>
           <ToastProvider>
-            <AuthGate />
-            <ScrollLockRouteGuard />
-            <div className="app-container">
-              <main className="app-main">
-                <LanguageSwitcher />
-                <TopBreadcrumbsBar />
-                {children}
-              </main>
-              <BottomNav />
-            </div>
+            <AppShell>{children}</AppShell>
           </ToastProvider>
         </LocaleProvider>
       </body>
     </html>
   );
 }
-
