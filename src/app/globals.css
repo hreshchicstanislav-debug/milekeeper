@@ -132,7 +132,9 @@
 .demo-welcome-note { margin: 20px 0; padding: 16px; border-radius: var(--radius-md); background: var(--app-bg, #f2f2f7); }
 .demo-welcome-note p { margin-top: 6px; color: #58585d; }
 .demo-welcome .add-mileage-button { width: 100%; white-space: normal; }
-.demo-about:focus-visible, .demo-welcome button:focus-visible { outline: 2px solid var(--control-link-color); outline-offset: 2px; }
+.demo-welcome-actions { display: grid; gap: 10px; }
+.demo-welcome-actions .btn-secondary { white-space: normal; padding-block: 10px; }
+.demo-about:focus-visible, .demo-welcome button:focus-visible, .demo-welcome a:focus-visible { outline: 2px solid var(--control-link-color); outline-offset: 2px; }
 /* No transitions or animations: opening is also immediate with reduced motion. */
 
 /* Simple reset */

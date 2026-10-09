@@ -37,11 +37,14 @@ let browser, dev, fixture;
     });
     const page = await context.newPage();
     const errors = [];
-    const browserRequests = [], providerRequests = [], demoConsoleErrors = [];
+    const browserRequests = [], providerRequests = [], providerMethods = [], demoConsoleErrors = [];
     let inDemo = false, demoStage = 'outside demo';
     page.on('console', message => { if (inDemo && message.type() === 'error') demoConsoleErrors.push(message.text()); });
     page.on('request', request => browserRequests.push({ url: request.url(), method: request.method(), action: request.headers()['next-action'] }));
-    fixture.server.on('request', request => providerRequests.push(request.url));
+    fixture.server.on('request', request => {
+        providerRequests.push(request.url);
+        providerMethods.push({ path: new URL(request.url, 'http://localhost:54329').pathname, method: request.method });
+    });
     page.on('pageerror', error => { errors.push(error.message); console.error('PAGEERROR at ' + page.url() + ' (' + demoStage + '): ' + error.message); });
     const welcomeKey = 'milekeeper.demo.welcome.v1';
     const testWelcome = async () => {
@@ -73,6 +76,12 @@ let browser, dev, fixture;
                 await explore.scrollIntoViewIfNeeded();
                 const button = await explore.boundingBox();
                 assert(button && button.y >= bounds.y && button.y + button.height <= bounds.y + bounds.height, 'Primary button unreachable');
+                const ownData = dialog.getByRole('link', { name: locale === 'en' ? 'Use my own data' : 'Перейти к своим данным', exact: true });
+                assert.equal(await ownData.getAttribute('href'), locale === 'en' ? '/en' : '/');
+                await ownData.scrollIntoViewIfNeeded();
+                const secondary = await ownData.boundingBox();
+                assert(secondary && secondary.y >= bounds.y && secondary.y + secondary.height <= bounds.y + bounds.height, 'Secondary button unreachable');
+                assert.equal(await ownData.evaluate(element => element.scrollWidth > element.clientWidth), false, 'Secondary label clipped');
                 if (height === 360) await page.screenshot({ path: path.join(artifacts, `welcome-${locale}-320x360-bottom.png`) });
             }
         }
@@ -82,7 +91,11 @@ let browser, dev, fixture;
         await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Explore demo');
         await page.keyboard.press('Tab');
+        assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Use my own data');
+        await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.textContent), 'RU');
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Use my own data');
         await page.keyboard.press('Shift+Tab');
         assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Explore demo');
         await page.keyboard.press('Escape');
@@ -204,6 +217,54 @@ let browser, dev, fixture;
         await page.setViewportSize({ width: 390, height: 844 });
         console.log('PASS ' + (authenticated ? 'authenticated' : 'anonymous') + ' demo RU/EN, reload, Back/Forward, 320–430/1280px, no provider/API/actions/storage changes');
     };
+    const testWelcomeOwnData = async authenticated => {
+        for (const locale of ['ru', 'en']) {
+            const en = locale === 'en', home = en ? '/en' : '/', login = en ? '/en/login' : '/login';
+            const providerStart = providerRequests.length, browserStart = browserRequests.length;
+            const beforeCookies = await context.cookies();
+            const beforeStorage = await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } }));
+            inDemo = true;
+            demoStage = `welcome own data ${authenticated ? 'account' : 'guest'} ${locale}`;
+            await page.goto('http://localhost:3101' + (en ? '/en/demo' : '/demo'));
+            await page.waitForLoadState('networkidle');
+            await page.getByRole('button', { name: en ? 'About MileKeeper' : 'О MileKeeper', exact: true }).click();
+            const ownData = page.getByRole('dialog').getByRole('link', { name: en ? 'Use my own data' : 'Перейти к своим данным', exact: true });
+            assert.equal(await ownData.getAttribute('href'), home);
+            await ownData.focus();
+            assert.deepEqual(providerRequests.slice(providerStart), [], 'Welcome contacted provider before leaving demo');
+            assert.deepEqual(browserRequests.slice(browserStart).filter(r => new URL(r.url).pathname.startsWith('/api/') || r.action || r.method !== 'GET'), [], 'Welcome prefetched personal API/action');
+            assert.deepEqual(await context.cookies(), beforeCookies, 'Welcome changed account cookies');
+            assert.deepEqual(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } })), beforeStorage);
+            assert.deepEqual(demoConsoleErrors, []);
+            inDemo = false; // Account requests are allowed only after activating the exit.
+            const methodsStart = providerMethods.length;
+            const [navigation] = await Promise.all([
+                page.waitForRequest(r => r.isNavigationRequest() && new URL(r.url()).pathname === home),
+                page.keyboard.press('Enter'),
+            ]);
+            assert.equal(navigation.method(), 'GET');
+            await page.waitForURL('http://localhost:3101' + (authenticated ? home : login));
+            await page.getByRole('heading', { name: authenticated ? (en ? 'Home' : 'Главная') : (en ? 'Sign in' : 'Вход'), exact: true }).waitFor();
+            await page.waitForLoadState('networkidle');
+            assert.equal(await page.getByRole('dialog').count(), 0);
+            assert.equal(await page.evaluate(key => localStorage.getItem(key), welcomeKey), 'seen');
+            assert(!providerMethods.slice(methodsStart).some(r => r.path === '/auth/v1/logout' || (r.path.startsWith('/rest/v1/') && r.method !== 'GET')), 'Exit signed out or wrote demo data');
+            if (authenticated) {
+                await page.locator('.mileage-date').waitFor();
+                assert.match(await page.locator('.mileage-date').innerText(), en ? /120,000 km/ : /120\s000 км/, 'Account must show its existing 120000 km measurement');
+                const authCookies = cookies => cookies.filter(c => ['mk_sb_at', 'mk_sb_rt'].includes(c.name)).map(c => ({ name: c.name, value: c.value })).sort((a, b) => a.name.localeCompare(b.name));
+                assert.equal(authCookies(beforeCookies).length, 2, 'Fixture account session absent');
+                assert.deepEqual(authCookies(await context.cookies()), authCookies(beforeCookies), 'Exit replaced the existing account session');
+            } else {
+                await page.getByRole('button', { name: en ? 'Continue with Google' : 'Войти через Google', exact: true }).waitFor();
+                assert.deepEqual(providerRequests.slice(providerStart), [], 'Guest exit called provider without Google sign-in');
+            }
+            await page.goto('http://localhost:3101' + (en ? '/en/demo' : '/demo'));
+            await page.waitForLoadState('networkidle');
+            assert.equal(await page.getByRole('dialog').count(), 0, 'Own data exit did not preserve welcome marker');
+        }
+        console.log('PASS welcome own data RU/EN keyboard exit: ' + (authenticated ? 'existing account/session, real fixture odometer, no writes or sign-out' : 'localized login guards, no provider calls') + ', no private prefetch, marker retained');
+    };
     const checkEnglish = async () => {
         const copy = await page.locator('body').evaluate(body => {
             const attributes = [...body.querySelectorAll('[aria-label],[title],[placeholder],[alt]')]
@@ -239,6 +300,7 @@ let browser, dev, fixture;
     await testFreshWelcome(false);
     await testFreshWelcome(true);
     await testDemo(false);
+    await testWelcomeOwnData(false);
     await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
     await page.waitForURL('http://localhost:3101/en/login');
     await page.getByRole('button', { name: 'Continue with Google', exact: true }).waitFor();
@@ -257,6 +319,7 @@ let browser, dev, fixture;
     await page.getByRole('button', { name: 'Add odometer reading', exact: true }).waitFor();
     console.log('PASS authenticated English home');
     await testDemo(true);
+    await testWelcomeOwnData(true);
     await page.getByRole('link', { name: 'Go to my own data', exact: true }).click();
     await page.waitForURL('http://localhost:3101/en');
     await page.getByRole('heading', { name: 'Home', exact: true }).waitFor();

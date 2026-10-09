@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useCopy } from '@/lib/i18n/client';
+import { localizedPath } from '@/lib/i18n/routing';
 import { demoWelcomeCopy, hasSeenDemoWelcome, rememberDemoWelcome } from '@/lib/demo/welcome';
 import { lockScroll, unlockScroll } from '@/lib/ui/scrollLock';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -21,13 +22,13 @@ export default function DemoWelcome() {
   };
   return <>
     <button ref={aboutRef} className="demo-about" type="button" onClick={() => setOpen(true)}>{copy.about}</button>
-    {open ? <WelcomeDialog copy={copy} onClose={close} returnFocus={returnFocus} /> : null}
+    {open ? <WelcomeDialog copy={copy} ownDataHref={localizedPath('/', locale)} onClose={close} returnFocus={returnFocus} /> : null}
   </>;
 }
 
 type WelcomeCopy = typeof demoWelcomeCopy.ru | typeof demoWelcomeCopy.en;
 
-function WelcomeDialog({ copy, onClose, returnFocus }: { copy: WelcomeCopy; onClose: () => void; returnFocus: () => void }) {
+function WelcomeDialog({ copy, ownDataHref, onClose, returnFocus }: { copy: WelcomeCopy; ownDataHref: string; onClose: () => void; returnFocus: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -49,8 +50,8 @@ function WelcomeDialog({ copy, onClose, returnFocus }: { copy: WelcomeCopy; onCl
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => {
       if (event.key !== 'Tab') return;
-      const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
-      const first = buttons[0], last = buttons[buttons.length - 1];
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]'));
+      const first = controls[0], last = controls[controls.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}>
@@ -61,6 +62,9 @@ function WelcomeDialog({ copy, onClose, returnFocus }: { copy: WelcomeCopy; onCl
     <h2 id={titleId}>{copy.title}</h2>
     <div id={descriptionId} className="demo-welcome-description"><p>{copy.intro}</p><p>{copy.detail}</p></div>
     <div className="demo-welcome-note"><strong>{copy.badge}</strong><p>{copy.fictional}</p></div>
-    <button className="add-mileage-button" type="button" onClick={onClose}>{copy.explore}</button>
+    <div className="demo-welcome-actions">
+      <button className="add-mileage-button" type="button" onClick={onClose}>{copy.explore}</button>
+      <a className="btn-secondary demo-link-button" href={ownDataHref} onClick={onClose}>{copy.ownData}</a>
+    </div>
   </dialog>;
 }

@@ -52,6 +52,20 @@ it('keeps an open dialog mounted during locale changes without writing preferenc
   await act(async () => tree!.update(<DemoWelcome />));
   expect(tree!.root.findByType('h2').children.join('')).toBe('Keep your car maintenance on track');
   expect(dialog.showModal).toHaveBeenCalledTimes(1); expect(setItem).not.toHaveBeenCalled();
+  expect(tree!.root.findByType('a').props.href).toBe('/en');
+  expect(tree!.root.findByType('a').children.join('')).toBe('Use my own data');
+});
+it.each([['ru', '/', 'Перейти к своим данным'], ['en', '/en', 'Use my own data']])('leaves %s demo through the account route and remembers dismissal', async (locale, href, label) => {
+  mocks.locale = locale;
+  await mount();
+  const link = tree!.root.findByType('a');
+  expect(link.props.href).toBe(href);
+  expect(link.children.join('')).toBe(label);
+  expect(setItem).not.toHaveBeenCalled();
+  await act(async () => link.props.onClick());
+  expect(setItem).toHaveBeenCalledWith(DEMO_WELCOME_KEY, 'seen');
+  expect(tree!.root.findAllByType('dialog')).toHaveLength(0);
+  expect(mocks.unlock).toHaveBeenCalledTimes(1);
 });
 it('closes on Escape and remembers dismissal', async () => {
   await mount(); const preventDefault = vi.fn();
