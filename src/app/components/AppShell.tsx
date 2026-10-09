@@ -8,6 +8,13 @@ import TopBreadcrumbsBar from './TopBreadcrumbsBar';
 import ScrollLockRouteGuard from './ScrollLockRouteGuard';
 import LanguageSwitcher from './LanguageSwitcher';
 
+// Resolve streamed RSC children in a component fiber, not the <main> host fiber.
+// React 19.2 can replay a suspended host fiber without rewinding its hydration
+// cursor, matching <main> against its own first child and raising error #418.
+function PageContent({ children }: { children: React.ReactNode }) {
+  return children;
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const demo = isDemoPath(usePathname());
   return <>
@@ -16,7 +23,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="app-main">
         <LanguageSwitcher persistPreference={!demo} />
         {!demo && <TopBreadcrumbsBar />}
-        {children}
+        <PageContent>{children}</PageContent>
       </main>
       {!demo && <BottomNav />}
     </div>
