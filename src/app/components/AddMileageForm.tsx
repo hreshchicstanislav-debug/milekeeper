@@ -12,7 +12,7 @@ import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
 
-export default function AddMileageForm() {
+export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string } = {}) {
   const { formatMileageInput, RU, t, intlLocale, errorMessageText } = useCopy();
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
@@ -147,11 +147,12 @@ export default function AddMileageForm() {
         type="button"
         onClick={() => setIsOpen(true)}
         className="add-mileage-button"
+        data-add-mileage-trigger
       >
-        {RU.home.addMileage}
+        {buttonLabel ?? RU.home.addMileage}
       </button>
       {isOpen && (
-    <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector=".add-mileage-button">
+    <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector="[data-add-mileage-trigger]">
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}
@@ -283,4 +284,3 @@ export default function AddMileageForm() {
     </>
   );
 }
-

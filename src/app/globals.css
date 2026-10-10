@@ -3754,3 +3754,22 @@ p {
 .language-switcher button:focus-visible { outline: 2px solid #007aff; outline-offset: 2px; }
 
 .modal-locale-control { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); right: max(8px, calc((100vw - var(--app-max-width, 430px)) / 2)); border-radius: 12px; background: var(--app-bg, #f2f2f7); }
+
+/* Contextual own-data guidance stays in the normal, scrollable home flow. */
+.getting-started {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--text-primary, #111827);
+  overflow-wrap: anywhere;
+}
+.getting-started h2 { font-size: 18px; line-height: 1.35; margin: 4px 0 10px; }
+.getting-started p { font-size: 14px; line-height: 1.5; margin: 8px 0; }
+.getting-started .getting-started-label { font-size: 12px; color: #4b5563; margin-top: 0; }
+.getting-started .getting-started-item { font-weight: 600; }
+.getting-started-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.getting-started-actions > a { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
+.getting-started-actions > a, .getting-started-actions > button { width: 100%; min-height: 44px; white-space: normal; height: auto; padding: 10px 12px; }
+.getting-started-actions :focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }

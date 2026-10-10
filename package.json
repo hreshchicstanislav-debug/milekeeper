@@ -24,6 +24,7 @@
     "supabase:fn:serve": "supabase functions serve --env-file supabase/.env",
     "test:i18n": "vitest run src/lib/i18n/__tests__ src/lib/auth/__tests__/middleware.test.ts src/app/components/__tests__/authFlows.test.tsx src/app/components/__tests__/localeSwitch.test.tsx",
     "test:i18n:browser": "node scripts/test-i18n-browser.cjs",
+    "test:onboarding:browser": "node scripts/test-own-data-browser.cjs",
     "test:demo:hydration": "node scripts/test-demo-hydration.cjs"
   },
   "_comment": "Note: supabase:login and supabase:link require manual authentication. Run 'npm run supabase:login' first if not already logged in.",

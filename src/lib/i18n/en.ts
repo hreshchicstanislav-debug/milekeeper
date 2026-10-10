@@ -1,5 +1,19 @@
 /** English copy keyed by the original Russian system text. Never apply to user data. */
 export const EN = {
+  "Начало работы": "Getting started",
+  "Добавьте первое показание одометра": "Add your first odometer reading",
+  "Запишите реальный пробег автомобиля. Это первый факт вашей истории и основа для учёта обслуживания.": "Record your car’s actual odometer reading. It starts your mileage history and provides a basis for tracking maintenance.",
+  "Добавить первое показание": "Add first reading",
+  "Создайте первый элемент обслуживания": "Create your first maintenance item",
+  "Выберите, что хотите отслеживать, и задайте интервал по пробегу или календарю. MileKeeper поможет видеть остаток до следующего обслуживания.": "Choose what to track and set a mileage or calendar interval. MileKeeper helps you see what remains until the next service.",
+  "Укажите последнюю известную замену": "Record the last known replacement",
+  "Дата и пробег последней замены — исходная точка интервала этого элемента. Запишите их, только если знаете. Если они неизвестны, оставьте элемент без записи: срок пока не будет рассчитан, остальные функции доступны.": "The date and odometer reading of the last replacement start this item’s interval. Only record them if you know them. If unknown, leave the item without a replacement: its due time cannot be calculated yet, and other features remain available.",
+  "Указать последнюю замену": "Record last replacement",
+  "Средний темп появится по истории пробега": "Mileage history will provide an average pace",
+  "Когда проедете ещё, запишите большее показание в другой календарный день. По реальным замерам MileKeeper сможет оценить средний темп и дни до обслуживания по пробегу. Вымышленные записи не нужны.": "After driving further, record a higher reading on a different calendar day. Real readings let MileKeeper estimate your average pace and days until mileage-based maintenance. No fictional entries are needed.",
+  "Календарные сроки уже работают от даты последней замены. Остаток километров можно смотреть без оценки среднего темпа.": "Calendar due times already work from the last replacement date. You can check remaining kilometres without an average pace estimate.",
+  "Посмотреть демо": "Explore demo",
+
   'дн.': 'days', 'км': 'km', '≈': '≈', 'Скоро': 'Due soon', 'Просрочено': 'Overdue',
   'Главная': 'Home', 'Элементы': 'Items', 'История': 'History',
   'Текущий пробег': 'Current odometer', 'Расчётный пробег': 'Estimated odometer',

@@ -14,6 +14,8 @@ import AddMileageForm from './components/AddMileageForm';
 import HomeAdaptiveContent from './components/HomeAdaptiveContent';
 import HomeSoonMaintenanceBlock from './components/HomeSoonMaintenanceBlock';
 import HomeContentClient from './components/HomeContentClient';
+import HomeGettingStarted from './components/HomeGettingStarted';
+import { getGettingStartedStep } from '@/lib/home/gettingStarted';
 import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 import Link from 'next/link';
@@ -145,6 +147,10 @@ export default async function Home() {
   // TO-BE: Compute daily mileage rate (rolling 60 days + fallback 14 active days)
   const dailyRateResult = calculateDailyMileageRateToBe(odometerEntries, appNow);
   const dailyRate = dailyRateResult.dailyRate;
+  const gettingStartedStep = getGettingStartedStep({
+    loaded: phase1Rejections.length === 0,
+    maxMileageEntry, odometerEntries, serviceItems, lastEventsMap, dailyRate,
+  });
   const confidence = computeConfidence(odometerEntries);
 
   // Estimated current odometer: last actual reading + elapsed calendar days * dailyRate.
@@ -516,6 +522,7 @@ export default async function Home() {
         <h1>{RU.home.title}</h1>
       </header>
       <HomeContentClient>
+        {gettingStartedStep && <HomeGettingStarted step={gettingStartedStep} />}
         <div className="mileage-card">
           <div className="mileage-label">
             {estimatedOdometer.isEstimated ? RU.home.estimatedMileage : RU.home.lastActualMileage}
@@ -548,9 +555,11 @@ export default async function Home() {
           </p>
         </div>
 
-        <div className="add-mileage-section">
-          <AddMileageForm />
-        </div>
+        {gettingStartedStep?.kind !== 'odometer' && (
+          <div className="add-mileage-section">
+            <AddMileageForm />
+          </div>
+        )}
 
         {/* Soon Maintenance Block - Conditional */}
         <HomeSoonMaintenanceBlock 
@@ -565,12 +574,14 @@ export default async function Home() {
         />
 
         {/* Upcoming Replacements Section - Adaptive Dashboard */}
-        <HomeAdaptiveContent
-          urgentItems={urgentItemsForHome}
-          odometerEntriesLength={odometerEntries.length}
-          confidence={confidence}
-          predictionHintText={RU.home.predictionHint[confidence]}
-        />
+        {!gettingStartedStep && (
+          <HomeAdaptiveContent
+            urgentItems={urgentItemsForHome}
+            odometerEntriesLength={odometerEntries.length}
+            confidence={confidence}
+            predictionHintText={RU.home.predictionHint[confidence]}
+          />
+        )}
       </HomeContentClient>
     </>
   );
