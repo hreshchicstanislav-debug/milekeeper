@@ -40,6 +40,13 @@ it.each(['/', '/en'])('links to the existing item screen and preserves personal 
   const html = renderToStaticMarkup(<HomeGettingStarted step={{ kind: 'replacement', item: { id: 'oil', title: 'Personal масло' } }} />);
   expect(html).toContain(`href="${pathname === '/' ? '' : '/en'}/items/oil"`);
   expect(html).toContain('Personal масло');
-  expect(html).toContain(pathname === '/' ? 'Если они неизвестны' : 'If unknown');
+  expect(html).toContain(pathname === '/' ? 'Если данных нет, оставьте элемент без записи' : 'If you don’t have this information, leave the item without a replacement record');
   expect(html).not.toContain('role="dialog"');
+});
+
+it.each(['/', '/en'])('explains mileage history and existing calendar support on %s', pathname => {
+  mocks.pathname = pathname;
+  const html = renderToStaticMarkup(<HomeGettingStarted step={{ kind: 'history' }} />);
+  expect(html).toContain(pathname === '/' ? 'После следующей поездки добавьте новое показание одометра в другой календарный день.' : 'After your next drive, add a new odometer reading on a different calendar day.');
+  expect(html).toContain(pathname === '/' ? 'Календарные сроки уже работают. Остаток километров доступен для элементов с интервалом по пробегу.' : 'Calendar-based due dates already work. Remaining kilometres are available for items with a mileage interval.');
 });
