@@ -11,6 +11,7 @@ exports.createFixture = function createFixture(options = {}) {
     let odometer = Array.from({ length: 10 }, (_, i) => ({ id: `reading-${i}`, user_id: uid, mileage_km: 120000 - i * 500, occurred_at: new Date(Date.now() - i * 7 * 86400000).toISOString(), note: i === 0 ? 'Личная запись' : null, created_at: new Date(Date.now() - i * 7 * 86400000).toISOString() }));
     let events = [{ id: 'event-1', user_id: uid, service_item_id: id, mileage_km: 112000, occurred_at: '2026-07-01T09:00:00Z', created_at: '2026-07-01T09:00:00Z', note: 'Пользовательский комментарий' }];
     const original = { items, odometer, events };
+    let authScenario = 'ok', generation = 0;
     let failedTable = null;
     function setScenario(name) {
         failedTable = name.startsWith('error-') ? name.slice(6) : null;
@@ -33,8 +34,15 @@ exports.createFixture = function createFixture(options = {}) {
         const url = new URL(req.url, 'http://localhost:54329');
         if (url.pathname === '/auth/v1/user')
             data = user;
-        else if (url.pathname === '/auth/v1/token')
+        else if (url.pathname === '/auth/v1/token') {
+            if (authScenario !== 'ok') {
+                res.writeHead(authScenario === 'invalid' ? 400 : 503);
+                res.end(JSON.stringify({ code: authScenario === 'invalid' ? 'refresh_token_not_found' : 'unexpected_failure' }));
+                return;
+            }
+            if (options.rotateAuth) session.refresh_token = 'fixture-refresh-' + (++generation);
             data = session;
+        }
         else if (url.pathname === '/auth/v1/authorize') {
             const callback = new URL('http://localhost:3101/auth/callback');
             callback.hash = new URLSearchParams({ access_token: token, refresh_token: session.refresh_token, expires_in: String(session.expires_in), token_type: 'bearer' }).toString();
@@ -85,5 +93,5 @@ exports.createFixture = function createFixture(options = {}) {
         }
         res.end(JSON.stringify(data));
     });
-    return { server, session, id, items, ...(options.mutable ? { setScenario } : {}) };
+    return { server, session, id, items, setAuthScenario(name) { authScenario = name; }, ...(options.mutable ? { setScenario } : {}) };
 };

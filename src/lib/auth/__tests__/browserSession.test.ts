@@ -6,6 +6,7 @@ let current: typeof original | null;
 const auth = { getSession: vi.fn(), setSession: vi.fn(), signOut: vi.fn() };
 const sync = vi.fn();
 const clear = vi.fn();
+const recover = vi.fn();
 let manager: BrowserSession;
 beforeEach(() => {
   vi.resetAllMocks();
@@ -15,7 +16,8 @@ beforeEach(() => {
   auth.signOut.mockImplementation(async () => { current = null; return { error: null }; });
   sync.mockResolvedValue({ ok: true, session: rotated });
   clear.mockResolvedValue(true);
-  manager = new BrowserSession(auth, sync, clear);
+  recover.mockResolvedValue({ ok: false, status: 401 });
+  manager = new BrowserSession(auth, sync, clear, undefined, recover);
 });
 
 describe('browser/server session synchronization', () => {
@@ -61,8 +63,8 @@ describe('browser/server session synchronization', () => {
   it('does not clear cookies just because browser storage has no session', async () => {
     current = null;
     expect(await manager.synchronize()).toBe(false);
-    expect(authRedirect(manager.state, '/')).toBe('/login');
-    expect(authRedirect(manager.state, '/login')).toBeNull();
+    expect(manager.state.phase).toBe('reauth');
+    expect(authRedirect(manager.state, '/')).toBeNull();
     expect(clear).not.toHaveBeenCalled();
   });
   it('treats getSession failure as unknown validity, not signed out', async () => {
@@ -121,10 +123,10 @@ describe('coordinated logout', () => {
   });
   it('handles externally expired/signed-out sessions without revoking twice', async () => {
     current = null;
-    expect(await manager.signedOut()).toBe(true);
+    expect(await manager.signedOut()).toBe(false);
     expect(auth.signOut).not.toHaveBeenCalled();
-    expect(clear).toHaveBeenCalledOnce();
-    expect(manager.state.phase).toBe('anon');
+    expect(clear).not.toHaveBeenCalled();
+    expect(manager.state.phase).toBe('reauth');
   });
   it('deduplicates double click logout', async () => {
     expect(await Promise.all([manager.logout(), manager.logout()])).toEqual([true, true]);
@@ -173,7 +175,7 @@ it('does not overwrite a newer browser login with an old in-flight sync response
   expect(await manager.synchronize(true)).toBe(true);
 });
 it('does not clear a newer login in response to a stale queued SIGNED_OUT event', async () => {
-  expect(await manager.signedOut()).toBe(false); // SDK now has a newer session
+  expect(await manager.signedOut()).toBe(true); // SDK now has a newer session
   await vi.waitFor(() => expect(manager.state.phase).toBe('authed'));
   expect(clear).not.toHaveBeenCalled();
   expect(current).toEqual(rotated);
@@ -193,4 +195,82 @@ it('does not declare logout successful if signOut reports success but browser se
   expect(clear).not.toHaveBeenCalled();
   expect(authRedirect(manager.state, '/')).toBeNull();
   expect(manager.state.message).toContain('осталась активной');
+});
+
+it('restores a cookie-only session before navigation and does not rotate it again', async () => {
+  current = null; recover.mockResolvedValue({ ok: true, session: rotated });
+  expect(await manager.synchronize()).toBe(true);
+  expect(current).toEqual(rotated);
+  expect(recover).toHaveBeenCalledOnce();
+  expect(sync).not.toHaveBeenCalled();
+  await manager.synchronize();
+  expect(recover).toHaveBeenCalledOnce();
+});
+it.each([401, 429, 503])('bounds failed cookie recovery HTTP %s and permits an explicit retry', async status => {
+  current = null; recover.mockResolvedValue({ ok: false, status });
+  await manager.synchronize();
+  expect(manager.state.phase).toBe(status === 401 ? 'reauth' : 'error');
+  for (let i = 0; i < 10; i++) await manager.signedOut();
+  expect(recover).toHaveBeenCalledOnce();
+  expect(clear).not.toHaveBeenCalled();
+  expect(auth.signOut).not.toHaveBeenCalled();
+  recover.mockResolvedValue({ ok: true, session: rotated });
+  expect(await manager.synchronize(true)).toBe(true);
+});
+it('uses local sign-out so another device is not revoked', async () => {
+  await manager.logout();
+  expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+});
+it('a manual recovery resynchronizes cookies even if SDK tokens were already confirmed', async () => {
+  await manager.synchronize();
+  await manager.synchronize(true);
+  expect(sync).toHaveBeenCalledTimes(2);
+});
+it('does not replace a new Google login with a delayed cookie recovery', async () => {
+  current = null;
+  recover.mockImplementation(async () => { current = original; return { ok: true, session: rotated }; });
+  expect(await manager.synchronize()).toBe(false);
+  expect(current).toEqual(original);
+  expect(auth.setSession).not.toHaveBeenCalled();
+});
+
+it('recovers a newer cookie generation after the SDK rejects an old refresh token', async () => {
+  current = null;
+  auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: { status: 400, code: 'refresh_token_not_found' } });
+  recover.mockResolvedValue({ ok: true, session: rotated });
+  expect(await manager.synchronize()).toBe(true);
+  expect(current).toEqual(rotated);
+  expect(recover).toHaveBeenCalledOnce();
+  expect(clear).not.toHaveBeenCalled();
+  expect(auth.signOut).not.toHaveBeenCalled();
+});
+it('forced recovery verifies cookies after sharing a background cached-session flight', async () => {
+  await manager.synchronize();
+  let release!: (result: { data: { session: typeof rotated }; error: null }) => void;
+  auth.getSession.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  const background = manager.synchronize();
+  await vi.waitFor(() => expect(release).toBeDefined());
+  const forced = manager.synchronize(true);
+  release({ data: { session: rotated }, error: null });
+  expect(await background).toBe(true);
+  expect(await forced).toBe(true);
+  expect(sync).toHaveBeenCalledTimes(2);
+});
+it('does not reuse a previous in-memory confirmation after a forced sync was refused', async () => {
+  await manager.synchronize();
+  sync.mockResolvedValueOnce({ ok: false, status: 401 });
+  expect(await manager.synchronize(true)).toBe(false);
+  expect(await manager.synchronize()).toBe(false);
+  expect(manager.state.phase).not.toBe('authed');
+  expect(sync).toHaveBeenCalledTimes(2);
+});
+
+it.each(['sync', 'logout'])('turns a rejected cross-tab lock into a retryable %s error', async operation => {
+  const tabs = { exclusive: vi.fn().mockRejectedValue(new Error('Lock unavailable')),
+    isConfirmed: async () => false, confirm: async () => {} };
+  manager = new BrowserSession(auth, sync, clear, tabs, recover);
+  expect(await (operation === 'sync' ? manager.synchronize() : manager.logout())).toBe(false);
+  expect(manager.state).toMatchObject({ phase: 'error', operation });
+  expect(sync).not.toHaveBeenCalled();
+  expect(clear).not.toHaveBeenCalled();
 });

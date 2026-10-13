@@ -21,7 +21,8 @@ let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.stubGlobal('window', { location: { pathname: '/demo', origin: 'https://milekeeper.test', search: '', hash: '', assign: mocks.assign }, history: { pushState: mocks.push } });
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn(), location: { pathname: '/demo', origin: 'https://milekeeper.test', search: '', hash: '', assign: mocks.assign }, history: { pushState: mocks.push } });
+  vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   mocks.pathname = '/demo';
   mocks.client.mockReturnValue({ auth: { onAuthStateChange: mocks.authEvents, signInWithOAuth: mocks.oauth } });
   mocks.authEvents.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });

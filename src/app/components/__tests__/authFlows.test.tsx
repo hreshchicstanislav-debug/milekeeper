@@ -19,6 +19,7 @@ vi.mock('@/lib/auth/browserSession', async importOriginal => ({
   getBrowserSession: () => mocks.manager,
 }));
 import AuthGate from '../AuthGate';
+import RecoveryClient from '@/app/auth/recover/pageClient';
 import AuthCallback from '@/app/auth/callback/pageClient';
 import TopBreadcrumbsBar from '../TopBreadcrumbsBar';
 const router = { replace: mocks.replace };
@@ -30,6 +31,7 @@ const original = { access_token: 'at-a', refresh_token: 'rt-a' };
 const rotated = { access_token: 'at-b', refresh_token: 'rt-b' };
 const sync = vi.fn();
 const clear = vi.fn();
+const recover = vi.fn();
 let current: typeof original | null;
 let listeners: Array<(event: string, session: typeof original | null) => void>;
 let tree: ReactTestRenderer | undefined;
@@ -40,6 +42,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('window', { location: { search: '' }, addEventListener: vi.fn(), removeEventListener: vi.fn() });
   vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   mocks.pathname = '/login'; mocks.params = new URLSearchParams();
   current = original; listeners = [];
@@ -61,7 +64,8 @@ beforeEach(() => {
     return { data: { subscription: { unsubscribe: () => { listeners = listeners.filter(listener => listener !== callback); } } } };
   });
   sync.mockResolvedValue({ ok: true, session: rotated }); clear.mockResolvedValue(true);
-  mocks.manager = new BrowserSession(client.auth, sync, clear);
+  recover.mockResolvedValue({ ok: false, status: 401 });
+  mocks.manager = new BrowserSession(client.auth, sync, clear, undefined, recover);
 });
 afterEach(async () => {
   if (tree) await act(async () => tree!.unmount());
@@ -76,7 +80,7 @@ describe('callback UI', () => {
     await mount(<AuthCallback />);
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(tree!.root.findByProps({ role: 'alert' }).children.join('')).toContain('синхронизировать');
-    await act(async () => { tree!.root.findByType('button').props.onClick(); });
+    await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
     expect(mocks.replace).toHaveBeenCalledOnce();
     expect(mocks.replace).toHaveBeenCalledWith('/');
     expect(sync).toHaveBeenCalledTimes(2);
@@ -88,7 +92,7 @@ describe('callback UI', () => {
     expect(mocks.exchange).toHaveBeenCalledOnce();
     expect(mocks.exchange).toHaveBeenCalledWith('one-use');
     expect(mocks.replace).not.toHaveBeenCalled();
-    await act(async () => { tree!.root.findByType('button').props.onClick(); });
+    await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
     expect(mocks.exchange).toHaveBeenCalledOnce();
     expect(mocks.replace).toHaveBeenCalledOnce();
     expect(mocks.replace).toHaveBeenCalledWith('/');
@@ -109,7 +113,7 @@ describe('AuthGate UI', () => {
     await mount(<AuthGate />); await flush();
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(tree!.root.findByProps({ role: 'alert' })).toBeDefined();
-    await act(async () => { tree!.root.findByType('button').props.onClick(); });
+    await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
     await flush();
     expect(mocks.replace).toHaveBeenCalledOnce();
     expect(mocks.replace).toHaveBeenCalledWith('/');
@@ -118,14 +122,12 @@ describe('AuthGate UI', () => {
     await act(async () => { tree!.update(<AuthGate />); });
     expect(mocks.replace).toHaveBeenCalledOnce();
   });
-  it('redirects an absent session to login once and stops there', async () => {
+  it('offers login in a new tab for an expired session and preserves the current page', async () => {
     current = null; mocks.pathname = '/';
     await mount(<AuthGate />); await flush();
-    expect(mocks.replace).toHaveBeenCalledOnce();
-    expect(mocks.replace).toHaveBeenCalledWith('/login');
-    mocks.pathname = '/login';
-    await act(async () => { tree!.update(<AuthGate />); });
-    expect(mocks.replace).toHaveBeenCalledOnce();
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(tree!.root.findByType('a').props.href).toBe('/login?reauth=1');
+    expect(tree!.root.findByType('a').props.target).toBe('_blank');
     expect(clear).not.toHaveBeenCalled();
   });
 });
@@ -170,21 +172,24 @@ it('allows explicit retry after a temporary callback session-read error without 
   mocks.getSession.mockResolvedValueOnce({ data: { session: null }, error: { status: 429 } });
   await mount(<AuthCallback />);
   expect(mocks.replace).not.toHaveBeenCalled();
-  await act(async () => { tree!.root.findByType('button').props.onClick(); });
+  await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
   expect(mocks.replace).toHaveBeenCalledWith('/');
   expect(mocks.signOut).not.toHaveBeenCalled();
 });
-it('shows a retry action for an automatic sign-out cookie-clear failure', async () => {
+it('keeps the open page on SDK invalidation and resumes after Google re-login', async () => {
   mocks.pathname = '/';
   await mount(<AuthGate />); await flush();
-  clear.mockResolvedValueOnce(false);
   current = null;
   await act(async () => { listeners.forEach(listener => listener('SIGNED_OUT', null)); });
   await flush();
   expect(mocks.replace).not.toHaveBeenCalled();
-  expect(tree!.root.findByProps({ role: 'alert' }).children.length).toBeGreaterThan(0);
-  await act(async () => { tree!.root.findByType('button').props.onClick(); });
-  expect(mocks.replace).toHaveBeenCalledWith('/login');
+  expect(clear).not.toHaveBeenCalled();
+  expect(tree!.root.findByType('a').props.target).toBe('_blank');
+  current = original; // fresh login in the other tab broadcasts a session
+  await act(async () => { listeners.forEach(listener => listener('SIGNED_IN', original)); });
+  await flush();
+  expect((mocks.manager as BrowserSession).state.phase).toBe('authed');
+  expect(mocks.replace).not.toHaveBeenCalled();
 });
 
 describe('English auth flow', () => {
@@ -196,7 +201,7 @@ describe('English auth flow', () => {
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(tree!.root.findByProps({ role: 'alert' }).children.join('')).toContain('synchronize');
     expect(tree!.root.findByType('a').props.href).toBe('/en/login');
-    await act(async () => { tree!.root.findByType('button').props.onClick(); });
+    await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
     expect(mocks.replace).toHaveBeenCalledWith('/en');
     expect(mocks.signOut).not.toHaveBeenCalled();
   });
@@ -212,7 +217,8 @@ describe('English auth flow', () => {
   });
   it('redirects an anonymous English session to English login', async () => {
     current = null; mocks.pathname = '/en/items'; await mount(<AuthGate />); await flush();
-    expect(mocks.replace).toHaveBeenCalledWith('/en/login');
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(tree!.root.findByType('a').props.href).toBe('/en/login?reauth=1');
   });
   it('keeps an authenticated English login in the English app', async () => {
     mocks.pathname = '/en/login'; await mount(<AuthGate />); await flush();
@@ -225,4 +231,90 @@ describe('English auth flow', () => {
     expect(mocks.signOut).toHaveBeenCalledOnce(); expect(clear).toHaveBeenCalledOnce();
     expect(mocks.replace).toHaveBeenCalledWith('/en/login');
   });
+});
+
+describe('mobile recovery UI', () => {
+  it('deduplicates automatic recovery under StrictMode and returns to the protected destination', async () => {
+    mocks.pathname = '/auth/recover'; mocks.params = new URLSearchParams('next=/history');
+    await mount(<StrictMode><AuthGate /><RecoveryClient /></StrictMode>); await flush();
+    expect(sync).toHaveBeenCalledOnce();
+    expect(mocks.replace).toHaveBeenCalledWith('/history');
+    expect(mocks.replace.mock.calls.every(([path]) => path === '/history')).toBe(true);
+  });
+  it('shows retry after network failure and navigates only after it succeeds', async () => {
+    mocks.pathname = '/auth/recover'; current = null;
+    recover.mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValue({ ok: true, session: rotated });
+    await mount(<RecoveryClient />);
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(tree!.root.findByProps({ role: 'alert' })).toBeDefined();
+    await act(async () => { tree!.root.findAllByType('button')[0].props.onClick(); });
+    expect(mocks.replace).toHaveBeenCalledWith('/');
+    expect(recover).toHaveBeenCalledTimes(2);
+  });
+  it('keeps forced Google login available even when SDK still has a rejected session', async () => {
+    mocks.pathname = '/login'; (window.location as { search: string }).search = '?reauth=1';
+    await mount(<AuthGate />); await flush();
+    expect(sync).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+});
+
+it('does not navigate using a previous SDK confirmation when recovery must repair cookies', async () => {
+  await (mocks.manager as BrowserSession).synchronize();
+  sync.mockResolvedValueOnce({ ok: false, status: 503 });
+  mocks.pathname = '/auth/recover';
+  await mount(<RecoveryClient />);
+  expect(mocks.replace).not.toHaveBeenCalled();
+  expect(tree!.root.findByProps({ role: 'alert' })).toBeDefined();
+});
+
+it.each([['/', '/login'], ['/en', '/en/login']])('direct entry at %s without either session ends at %s', async (next, login) => {
+  current = null; mocks.pathname = '/auth/recover';
+  mocks.params = new URLSearchParams({ next });
+  recover.mockResolvedValue({ ok: false, status: 401, missing: true });
+  await mount(<RecoveryClient />);
+  expect(mocks.replace).toHaveBeenCalledOnce();
+  expect(mocks.replace).toHaveBeenCalledWith(login);
+  expect(clear).not.toHaveBeenCalled();
+  expect(mocks.signOut).not.toHaveBeenCalled();
+});
+it('normal login does not display an invalid-session dialog for a first-time visitor', async () => {
+  current = null; mocks.pathname = '/login';
+  recover.mockResolvedValue({ ok: false, status: 401, missing: true });
+  await mount(<AuthGate />); await flush();
+  expect(tree!.root.findAllByType('dialog')).toHaveLength(0);
+  expect(mocks.replace).not.toHaveBeenCalled();
+});
+it('losing both stores in an open app does not navigate away from unsaved input', async () => {
+  mocks.pathname = '/';
+  await mount(<AuthGate />); await flush();
+  current = null; recover.mockResolvedValue({ ok: false, status: 401, missing: true });
+  await act(async () => { listeners.forEach(listener => listener('SIGNED_OUT', null)); }); await flush();
+  expect(mocks.replace).not.toHaveBeenCalled();
+  expect(tree!.root.findByType('a').props.target).toBe('_blank');
+  expect(clear).not.toHaveBeenCalled();
+});
+it('a manual login after failed root recovery keeps Google controls outside a modal', async () => {
+  current = null; mocks.pathname = '/login';
+  recover.mockResolvedValue({ ok: false, status: 503 });
+  await mount(<AuthGate />); await flush();
+  expect(tree!.root.findByProps({ role: 'alert' })).toBeDefined();
+  expect(tree!.root.findAllByType('dialog')).toHaveLength(0);
+  expect(mocks.replace).not.toHaveBeenCalled();
+});
+it('finishes recovery after a newer SDK pair supersedes the first in-flight sync', async () => {
+  mocks.pathname = '/auth/recover'; mocks.params = new URLSearchParams('next=/en/history');
+  const newer = { access_token: 'at-c', refresh_token: 'rt-c' };
+  sync.mockImplementationOnce(async () => {
+    current = newer;
+    listeners.forEach(listener => listener('SIGNED_IN', newer));
+    return { ok: true, session: rotated };
+  });
+  await mount(<><AuthGate /><RecoveryClient /></>); await flush();
+  // AuthGate defers SDK events during recovery. A later confirmed flight can
+  // come from Retry or another subscriber once the obsolete response failed.
+  expect(mocks.replace).not.toHaveBeenCalled();
+  await act(async () => { await (mocks.manager as BrowserSession).synchronize(); });
+  expect(mocks.replace).toHaveBeenCalledOnce();
+  expect(mocks.replace).toHaveBeenCalledWith('/en/history');
 });

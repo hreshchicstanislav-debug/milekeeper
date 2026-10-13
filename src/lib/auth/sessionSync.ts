@@ -5,7 +5,7 @@ export function nextSyncAction(synced: SyncedState, accessToken: string | null |
   if (!accessToken) return synced?.kind === 'signed-out' ? 'none' : 'logout';
   return synced?.kind === 'session' && synced.accessToken === accessToken ? 'none' : 'sync';
 }
-export type SessionSyncResult = { ok: true; session: SessionTokens } | { ok: false; status: number };
+export type SessionSyncResult = { ok: true; session: SessionTokens } | { ok: false; status: number; missing?: true };
 
 /** One bounded retry for network/5xx; never retry rate limiting automatically. */
 async function post(input: string, body: object, fetchImpl: typeof fetch): Promise<{ status: number; body: unknown }> {
@@ -43,4 +43,18 @@ export async function postSessionSync(tokens: SessionTokens, fetchImpl: typeof f
 export async function postSessionLogout(fetchImpl: typeof fetch = fetch): Promise<boolean> {
   const response = await post('/api/auth/logout', {}, fetchImpl);
   return response.status === 200 && (response.body as { ok?: boolean } | null)?.ok === true;
+}
+
+/** Same-origin cookie fallback for a missing/rejected SDK session. Shares the
+ * bounded transport and never sends tokens in URLs or logs. */
+export async function postSessionRecovery(fetchImpl: typeof fetch = fetch): Promise<SessionSyncResult> {
+  const response = await post('/api/auth/recover', {}, fetchImpl);
+  const body = response.body as { ok?: boolean; session?: SessionTokens; reason?: string } | null;
+  if (response.status === 200 && body?.ok === true &&
+      typeof body.session?.access_token === 'string' && body.session.access_token &&
+      typeof body.session.refresh_token === 'string' && body.session.refresh_token) {
+    return { ok: true, session: body.session };
+  }
+  return { ok: false, status: response.status === 200 ? 503 : response.status,
+    ...(response.status === 401 && body?.reason === 'missing_session' ? { missing: true as const } : {}) };
 }

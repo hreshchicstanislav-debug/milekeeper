@@ -38,6 +38,28 @@ function forwardedRequestCookies(response: Response): string | null {
 
 const fetchMock = vi.fn();
 
+describe('direct root/login regression', () => {
+  it.each(['/', '/en', '/login', '/en/login'])('keeps %s usable with absent, valid, expired and incomplete cookies', async pathname => {
+    fetchMock.mockRejectedValue(new TypeError('offline'));
+    const cookies: Array<Record<string, string> | undefined> = [undefined,
+      { mk_sb_at: FRESH_AT, mk_sb_rt: 'rt' }, { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'stale-rt' }, { mk_sb_at: FRESH_AT }];
+    for (const cookie of cookies) {
+      const response = await middleware(request(pathname, cookie));
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(response.headers.get('cache-control')).toContain('no-store');
+      if (pathname.endsWith('/login') || cookie?.mk_sb_rt === 'rt') {
+        expect(response.status).toBe(200);
+        expect(response.headers.get('location')).toBeNull();
+      } else {
+        expect(response.status).toBe(307);
+        const target = new URL(response.headers.get('location')!);
+        expect(target.pathname).toBe('/auth/recover'); expect(target.searchParams.get('next')).toBe(pathname);
+      }
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('middleware — isolated public demo', () => {
   it.each(['/demo', '/en/demo'])('never refreshes or changes cookies on %s, including stale sessions', async pathname => {
     for (const cookies of [undefined, { mk_sb_at: FRESH_AT, mk_sb_rt: 'existing' }, { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'expired' }]) {
@@ -108,7 +130,7 @@ describe('middleware — missing cookies', () => {
   it('redirects to /login', async () => {
     const response = await middleware(request('/'));
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://milekeeper.test/login');
+    expect(response.headers.get('location')).toBe('https://milekeeper.test/auth/recover?next=%2F');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -118,152 +140,33 @@ describe('middleware — missing cookies', () => {
   });
 });
 
-describe('middleware — expired access token, valid refresh token', () => {
-  beforeEach(() => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ access_token: 'at-new', refresh_token: 'rt-new' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    );
-  });
-
-  it('refreshes exactly once against the Supabase token endpoint', async () => {
-    await middleware(request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' }));
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://project.supabase.co/auth/v1/token?grant_type=refresh_token');
-    expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({ refresh_token: 'rt-0' });
-  });
-
-  it('writes the rotated pair to the response so the browser keeps up', async () => {
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-
-    expect(responseCookie(response, 'mk_sb_at')).toMatchObject({
-      value: 'at-new',
-      httpOnly: true,
-      secure: true,
-      path: '/',
-    });
-    expect(responseCookie(response, 'mk_sb_rt')).toMatchObject({
-      value: 'rt-new',
-      httpOnly: true,
-    });
-  });
-
-  it('forwards the rotated pair to the current render, not the stale one', async () => {
-    // Without this the RSC pass would re-refresh with the old token and throw
-    // the rotated result away — the drift that terminates Supabase sessions.
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-
-    const forwarded = forwardedRequestCookies(response);
-    expect(forwarded).toContain('mk_sb_at=at-new');
-    expect(forwarded).toContain('mk_sb_rt=rt-new');
-    expect(forwarded).not.toContain('rt-0');
-  });
-
-  it('lets the request continue', async () => {
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-    expect(response.status).toBe(200);
-    expect(response.headers.get('location')).toBeNull();
-  });
-});
-
-describe('middleware — invalid refresh token', () => {
-  it('clears the cookies and redirects to /login', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
-    );
-
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-dead' })
-    );
-
+describe('middleware — browser owns expired session recovery', () => {
+  it.each(['/', '/history', '/en', '/en/history'])('sends %s to a public recovery UI without exchanging or deleting tokens', async pathname => {
+    const req = request(pathname, { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-old' });
+    const response = await middleware(req);
+    const location = new URL(response.headers.get('location')!);
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://milekeeper.test/login');
-    expect(responseCookie(response, 'mk_sb_at')).toMatchObject({ value: '', maxAge: 0 });
-    expect(responseCookie(response, 'mk_sb_rt')).toMatchObject({ value: '', maxAge: 0 });
-  });
-
-  it('does not reach page rendering, so no runtime "Not authenticated" screen', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'session_not_found' }), { status: 401 }));
-    const response = await middleware(
-      request('/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-dead' })
-    );
-    expect(response.status).toBe(307);
-  });
-});
-
-describe('middleware — Supabase unavailable', () => {
-  it('keeps the session on a network failure instead of signing the user out', async () => {
-    fetchMock.mockRejectedValue(new Error('ECONNRESET'));
-
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-
-    expect(response.status).toBe(503);
-    expect(responseCookie(response, 'mk_sb_at')).toBeUndefined();
-  });
-
-  it('keeps the session on a 5xx', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 503 }));
-
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-
-    expect(response.status).toBe(503);
-    expect(responseCookie(response, 'mk_sb_at')).toBeUndefined();
-  });
-});
-
-describe('middleware — dev-guest mode', () => {
-  // The dev-only escape hatch already honoured by AuthGate and page.tsx. It must
-  // keep working now that the request boundary actually guards routes locally.
-  beforeEach(() => {
-    process.env.NEXT_PUBLIC_DEV_GUEST_MODE = '1';
-  });
-
-  it('lets an unauthenticated developer through instead of redirecting', async () => {
-    const response = await middleware(request('/'));
-    expect(response.status).toBe(200);
+    expect(location.pathname).toBe('/auth/recover');
+    expect(location.searchParams.get('next')).toBe(pathname);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(req.cookies.get('mk_sb_rt')?.value).toBe('rt-old');
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
-  it('drops a dead session but still renders the page', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'refresh_token_not_found' }), { status: 400 }));
-
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-dead' })
-    );
-
+  it('keeps recovery public even with an expired pair, preventing redirect loops', async () => {
+    const response = await middleware(request('/auth/recover?next=%2Fhistory', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-old' }));
     expect(response.status).toBe(200);
-    expect(responseCookie(response, 'mk_sb_at')).toMatchObject({ value: '', maxAge: 0 });
+    expect(response.headers.get('location')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
-
-  it('still refreshes and persists a live session', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ access_token: 'at-new', refresh_token: 'rt-new' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    );
-
-    const response = await middleware(
-      request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' })
-    );
-
-    expect(responseCookie(response, 'mk_sb_at')).toMatchObject({ value: 'at-new' });
-    expect(forwardedRequestCookies(response)).toContain('mk_sb_at=at-new');
+  it('never rotates tokens during concurrent page/prefetch requests', async () => {
+    await Promise.all(Array.from({ length: 8 }, () => middleware(request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-old' }))));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('preserves the existing dev-only guest behavior', async () => {
+    process.env.NEXT_PUBLIC_DEV_GUEST_MODE = '1';
+    expect((await middleware(request('/'))).status).toBe(200);
+    expect((await middleware(request('/', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-old' }))).status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -344,23 +247,11 @@ describe('middleware — PWA assets are not reachable through isPublicPath', () 
   );
 });
 
-describe('middleware — non-destructive error handling', () => {
-  it.each([429, 408, 400, 401])('preserves both cookies and does not redirect for ambiguous/transient HTTP %s', async status => {
-    fetchMock.mockResolvedValue(new Response('{}', { status }));
-    const req = request('/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' });
-    const response = await middleware(req);
-    expect(response.status).toBe(status === 429 ? 429 : 503);
-    expect(response.headers.get('location')).toBeNull();
-    expect(response.headers.get('set-cookie')).toBeNull();
-    expect(req.cookies.get('mk_sb_rt')?.value).toBe('rt-0');
-  });
-});
-
 describe('middleware — locale routing without auth changes', () => {
   it.each(['/en', '/en/items', '/en/items/123', '/en/history'])('protects %s with English login', async pathname => {
     const response = await middleware(request(pathname));
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://milekeeper.test/en/login');
+    expect(new URL(response.headers.get('location')!).searchParams.get('next')).toBe(pathname);
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it('rewrites English login to the existing public login and overwrites a spoofed locale header', async () => {
@@ -394,17 +285,8 @@ describe('middleware — locale routing without auth changes', () => {
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
-  it('forwards rotated auth cookies through the English rewrite', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ access_token: 'at-new', refresh_token: 'rt-new' }), { status: 200 }));
-    const response = await middleware(request('/en/history', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' }));
-    expect(response.headers.get('x-middleware-rewrite')).toBe('https://milekeeper.test/history');
-    expect(forwardedRequestCookies(response)).toContain('mk_sb_rt=rt-new');
-    expect(responseCookie(response, 'mk_sb_rt')).toMatchObject({ value: 'rt-new', httpOnly: true });
-  });
-  it('localizes a transient auth failure without clearing the English session', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }));
-    const response = await middleware(request('/en', { mk_sb_at: EXPIRED_AT, mk_sb_rt: 'rt-0' }));
-    expect(response.status).toBe(429); expect(response.headers.get('set-cookie')).toBeNull();
-    expect(await response.text()).toBe('Could not refresh your session. Please reload the page later.');
+  it('keeps the recovery locale from the requested destination', async () => {
+    const response = await middleware(request('/auth/recover?next=%2Fen%2Fhistory'));
+    expect(response.headers.get('x-middleware-request-x-milekeeper-locale')).toBe('en');
   });
 });

@@ -21,7 +21,8 @@ export function browserTabCoordination(): TabCoordination {
   }
   return {
     async exclusive(work) {
-      if (navigator.locks?.request) return await navigator.locks.request('milekeeper-auth-cookie-sync', work);
+      if (navigator.locks?.request) return await navigator.locks.request('milekeeper-auth-cookie-sync',
+        { signal: AbortSignal.timeout(10000) }, work);
       return work();
     },
     async isConfirmed(tokens) {

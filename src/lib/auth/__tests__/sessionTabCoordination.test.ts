@@ -28,11 +28,12 @@ it('shares only a fingerprint and expires deduplication after ten seconds', asyn
   expect(storage.size).toBe(0);
 });
 it('uses a separate cross-tab Web Lock when available', async () => {
-  const request = vi.fn(async (_name: string, work: () => Promise<boolean>) => work());
+  const request = vi.fn(async (_name: string, options: { signal: AbortSignal }, work: () => Promise<boolean>) => work());
   vi.stubGlobal('navigator', { locks: { request } });
   const tabs = browserTabCoordination();
   expect(await tabs.exclusive(async () => true)).toBe(true);
   expect(request.mock.calls[0][0]).toBe('milekeeper-auth-cookie-sync');
+  expect(request.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
 });
 it('falls back to bounded marker deduplication when Web Locks are absent', async () => {
   expect(await browserTabCoordination().exclusive(async () => true)).toBe(true);

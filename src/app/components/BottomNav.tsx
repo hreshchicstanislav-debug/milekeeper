@@ -37,7 +37,7 @@ export default function BottomNav() {
           <Link
             key={item.href}
             href={path(item.href)}
-            prefetch={pathname === '/login' || pathname === '/auth/callback' ? false : undefined}
+            prefetch={pathname === '/login' || pathname === '/auth/callback' || pathname === '/auth/recover' ? false : undefined}
             aria-current={isActive ? 'page' : undefined}
             className={`nav-item ${isActive ? 'active' : ''}`}
           >

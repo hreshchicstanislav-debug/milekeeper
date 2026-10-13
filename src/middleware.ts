@@ -1,34 +1,13 @@
-import { localeFromPath, stripLocale, localizedPath, LOCALE_HEADER, LOCALE_COOKIE, callbackLocale } from '@/lib/i18n/routing';
-import { translate } from '@/lib/i18n/copy';
+import { localeFromPath, stripLocale, LOCALE_HEADER, LOCALE_COOKIE, callbackLocale } from '@/lib/i18n/routing';
 import { isDemoPath } from '@/lib/demo/routing';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import {
-  AUTH_COOKIE_MAX_AGE,
-  AUTH_COOKIE_OPTIONS,
-  COOKIE_AT,
-  COOKIE_RT,
-} from '@/lib/supabase/authCookieConfig';
+import { COOKIE_AT, COOKIE_RT } from '@/lib/supabase/authCookieConfig';
 import { isAccessTokenFresh } from '@/lib/auth/accessToken';
-import { refreshAccessToken } from '@/lib/auth/refreshSession';
 
-/**
- * Auth request boundary.
- *
- * This boundary persists refreshes before server rendering (the auth sync API
- * also persists sessions received from the browser):
- * Server Components cannot modify response cookies, so a refresh performed
- * during an RSC render is necessarily thrown away. Doing the refresh here
- * instead lets us write the rotated pair to both:
- *
- * - `request.cookies`, so the RSC render that follows in this very request
- *   already sees the new tokens (mutating them rewrites the forwarded
- *   `cookie` header, which `proceed()` passes downstream);
- * - `response.cookies`, so the browser stores the new pair for next time.
- *
- * That is what stops the cookies from drifting generations behind the
- * browser's own session and tripping Supabase's refresh-token reuse detection.
- */
+// Middleware never rotates tokens. The browser coordinator owns refresh and
+// persists the resulting pair in both SDK storage and HttpOnly cookies before
+// navigating. Independent edge exchanges race SDK refreshes and parallel RSCs.
 
 /**
  * Mirrors the check in AuthGate and page.tsx. Without this, enabling dev-guest
@@ -44,6 +23,7 @@ function isPublicPath(pathname: string): boolean {
   return (
     pathname === '/login' ||
     pathname === '/auth/callback' ||
+    pathname === '/auth/recover' ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
   );
@@ -58,27 +38,22 @@ function withNoStore(response: NextResponse): NextResponse {
   return response;
 }
 
-function redirectToLogin(request: NextRequest): NextResponse {
+function redirectToRecovery(request: NextRequest): NextResponse {
   const url = request.nextUrl.clone();
-  url.pathname = localizedPath('/login', localeFromPath(request.nextUrl.pathname));
+  const next = request.nextUrl.pathname + request.nextUrl.search;
+  url.pathname = '/auth/recover';
   url.search = '';
-  const response = NextResponse.redirect(url);
-  // Drop the unusable pair so the next request cannot loop on it.
-  response.cookies.set(COOKIE_AT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
-  response.cookies.set(COOKIE_RT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
-  return withNoStore(response);
-}
-
-function readSupabaseEnv(): { url: string; anonKey: string } | null {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return url && anonKey ? { url, anonKey } : null;
+  url.searchParams.set('next', next);
+  // Preserve both stores. A missing/expired cookie is not proof that the
+  // browser session is invalid; recovery must run before any cookie deletion.
+  return withNoStore(NextResponse.redirect(url));
 }
 
 export async function middleware(request: NextRequest) {
   const originalPath = request.nextUrl.pathname;
-  const locale = originalPath === '/auth/callback'
-    ? callbackLocale(request.cookies.get(LOCALE_COOKIE)?.value) : localeFromPath(originalPath);
+  const locale = originalPath === '/auth/callback' || originalPath === '/auth/recover'
+    ? (originalPath === '/auth/recover' ? localeFromPath(request.nextUrl.searchParams.get('next') ?? '/')
+      : callbackLocale(request.cookies.get(LOCALE_COOKIE)?.value)) : localeFromPath(originalPath);
   const pathname = stripLocale(originalPath);
   // Always overwrite the client-supplied header. Locale never grants access.
   request.headers.set(LOCALE_HEADER, locale);
@@ -100,66 +75,12 @@ export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get(COOKIE_AT)?.value ?? null;
   const refreshToken = request.cookies.get(COOKIE_RT)?.value ?? null;
 
-  if (!accessToken || !refreshToken) {
-    return devGuest ? withNoStore(proceed()) : redirectToLogin(request);
-  }
-
-  // Timing hint only — see src/lib/auth/accessToken.ts. A "fresh" token is not
-  // trusted here, it is merely not worth a refresh round-trip; Supabase Auth
-  // still validates it in getRlsClientAndUserId() and RLS still gates the data.
-  if (isAccessTokenFresh(accessToken)) {
+  if (devGuest || (accessToken && refreshToken && isAccessTokenFresh(accessToken))) {
+    // Freshness is only a timing hint. Server getUser and RLS still validate
+    // identity and ownership before any data access.
     return withNoStore(proceed());
   }
-
-  const env = readSupabaseEnv();
-  if (!env) {
-    // Misconfiguration is not an auth failure — let the server client raise the
-    // explicit "Missing SUPABASE_URL" error rather than silently logging out.
-    return withNoStore(proceed());
-  }
-
-  const result = await refreshAccessToken(refreshToken, env);
-
-  if (result.status === 'invalid') {
-    if (!devGuest) {
-      return redirectToLogin(request);
-    }
-    // Dev-guest: drop the dead pair but let the page render its empty state.
-    const passthrough = proceed();
-    passthrough.cookies.set(COOKIE_AT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
-    passthrough.cookies.set(COOKIE_RT, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 });
-    return withNoStore(passthrough);
-  }
-
-  if (result.status === 'error') {
-    // Do not render with expired credentials: an RSC auth failure could bounce
-    // to login while the browser still has a session, creating a redirect loop.
-    if (devGuest) return withNoStore(proceed());
-    return withNoStore(new NextResponse(
-      translate(locale, 'Не удалось обновить сессию. Пожалуйста, повторите загрузку страницы позже.'),
-      { status: result.kind === 'rate-limit' ? 429 : 503,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
-    ));
-  }
-
-  const { access_token, refresh_token } = result.session;
-
-  // Request side: this render sees the rotated pair.
-  request.cookies.set(COOKIE_AT, access_token);
-  request.cookies.set(COOKIE_RT, refresh_token);
-
-  // Response side: the browser stores it for the next request.
-  const response = proceed();
-  response.cookies.set(COOKIE_AT, access_token, {
-    ...AUTH_COOKIE_OPTIONS,
-    maxAge: AUTH_COOKIE_MAX_AGE,
-  });
-  response.cookies.set(COOKIE_RT, refresh_token, {
-    ...AUTH_COOKIE_OPTIONS,
-    maxAge: AUTH_COOKIE_MAX_AGE,
-  });
-
-  return withNoStore(response);
+  return redirectToRecovery(request);
 }
 
 export const config = {

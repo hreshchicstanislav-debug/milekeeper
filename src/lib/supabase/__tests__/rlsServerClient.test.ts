@@ -73,7 +73,7 @@ beforeEach(() => {
   cookieValues.set('mk_sb_rt', 'rt-live');
   process.env.SUPABASE_URL = 'https://project.supabase.co';
   process.env.SUPABASE_ANON_KEY = 'anon-key';
-  setSession.mockResolvedValue(sessionResponse());
+  getUser.mockResolvedValue(sessionResponse());
 });
 
 afterEach(() => {
@@ -81,27 +81,26 @@ afterEach(() => {
 });
 
 describe('getRlsClientAndUserId — fresh session', () => {
-  it('builds one client, attaches the session once, and returns the user id', async () => {
+  it('builds one client, validates the JWT once, and returns the user id', async () => {
     const { userId, supabase } = await getRlsClientAndUserId();
 
     expect(userId).toBe('user-123');
     expect(supabase).toBeDefined();
     expect(createClient).toHaveBeenCalledTimes(1);
-    expect(setSession).toHaveBeenCalledTimes(1);
-    expect(setSession).toHaveBeenCalledWith({
-      access_token: 'at-live',
-      refresh_token: 'rt-live',
-    });
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledWith('at-live');
+    expect(setSession).not.toHaveBeenCalled();
   });
 
-  it('does not spend a second round-trip on getUser()', async () => {
+  it('never exchanges the refresh token in a render or action', async () => {
     await getRlsClientAndUserId();
-    expect(getUser).not.toHaveBeenCalled();
+    expect(setSession).not.toHaveBeenCalled();
   });
 
   it('creates the client with server-safe auth options', async () => {
     await getRlsClientAndUserId();
     const [, , options] = createClient.mock.calls[0] as unknown as [string, string, any];
+    expect(options.global.headers.Authorization).toBe('Bearer at-live');
     expect(options.auth).toMatchObject({
       persistSession: false,
       autoRefreshToken: false,
@@ -123,7 +122,7 @@ describe('getRlsClientAndUserId — request-scoped dedupe', () => {
     ]);
 
     expect(createClient).toHaveBeenCalledTimes(1);
-    expect(setSession).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledTimes(1);
     expect(new Set(results.map((r) => r.supabase)).size).toBe(1);
     expect(results.every((r) => r.userId === 'user-123')).toBe(true);
   });
@@ -133,7 +132,7 @@ describe('getRlsClientAndUserId — request-scoped dedupe', () => {
     await requireCurrentUserId();
 
     expect(createClient).toHaveBeenCalledTimes(1);
-    expect(setSession).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledTimes(1);
   });
 
   it('starts fresh in a new request scope', async () => {
@@ -146,8 +145,8 @@ describe('getRlsClientAndUserId — request-scoped dedupe', () => {
 });
 
 describe('getRlsClientAndUserId — failures are not swallowed', () => {
-  it('rejects when setSession returns an error', async () => {
-    setSession.mockResolvedValue({
+  it('rejects when getUser returns an error', async () => {
+    getUser.mockResolvedValue({
       data: { user: null, session: null },
       error: { message: 'invalid claim: missing sub claim', code: 'bad_jwt', status: 401 },
     });
@@ -155,8 +154,8 @@ describe('getRlsClientAndUserId — failures are not swallowed', () => {
     await expect(getRlsClientAndUserId()).rejects.toThrow('Not authenticated');
   });
 
-  it('rejects when setSession returns no user', async () => {
-    setSession.mockResolvedValue({ data: { user: null, session: null }, error: null });
+  it('rejects when getUser returns no user', async () => {
+    getUser.mockResolvedValue({ data: { user: null, session: null }, error: null });
     await expect(getRlsClientAndUserId()).rejects.toThrow('Not authenticated');
   });
 
@@ -173,22 +172,7 @@ describe('getRlsClientAndUserId — failures are not swallowed', () => {
   });
 });
 
-describe('getRlsClientAndUserId — in-render refresh fallback', () => {
-  it('still serves the request when the token rotated inside the render', async () => {
-    // Middleware should have refreshed at the boundary; if the token expired in
-    // between, the request must still succeed even though the rotated token
-    // cannot be written back to the cookies from an RSC render.
-    setSession.mockResolvedValue(sessionResponse({ refresh_token: 'rt-rotated' }));
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const { userId } = await getRlsClientAndUserId();
-
-    expect(userId).toBe('user-123');
-    warn.mockRestore();
-  });
-});
-
 it.each([429, 503, 0])('does not misclassify temporary auth HTTP %s as missing authentication', async status => {
-  setSession.mockResolvedValue({ data: { user: null, session: null }, error: { status, code: 'unexpected_failure' } });
+  getUser.mockResolvedValue({ data: { user: null, session: null }, error: { status, code: 'unexpected_failure' } });
   await expect(getRlsClientAndUserId()).rejects.toThrow(status === 429 ? 'Authentication rate limit' : 'Authentication temporarily unavailable');
 });

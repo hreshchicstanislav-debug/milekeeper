@@ -17,12 +17,13 @@ export function LocaleProvider({ initialLocale, children }: { initialLocale: Loc
   // through hydration, then the visible URL for navigation and Back/Forward.
   const hydrated = useHydrated();
   const locale = !hydrated ? initialLocale
+    : pathname === '/auth/recover' ? initialLocale
     : pathname === '/auth/callback' ? readOAuthLocale(initialLocale) : localeFromPath(pathname);
   const copy = useMemo(() => createCopy(locale), [locale]);
   useEffect(() => {
     // Wait until Next has committed the native-history URL before refreshing.
     // Refreshing in the click handler would still fetch the previous locale.
-    if (hydrated && pathname !== '/auth/callback' && locale !== initialLocale) router.refresh();
+    if (hydrated && pathname !== '/auth/callback' && pathname !== '/auth/recover' && locale !== initialLocale) router.refresh();
   }, [hydrated, pathname, locale, initialLocale, router]);
   useEffect(() => {
     document.documentElement.lang = locale;

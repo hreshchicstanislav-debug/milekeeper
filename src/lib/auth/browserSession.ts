@@ -1,6 +1,6 @@
 import { localeFromPath, stripLocale, localizedPath } from '@/lib/i18n/routing';
 import { createBrowserClient } from '@/lib/supabase/browserClient';
-import { postSessionLogout, postSessionSync } from './sessionSync';
+import { postSessionLogout, postSessionSync, postSessionRecovery } from './sessionSync';
 import type { SessionTokens } from './validateSession';
 import { browserTabCoordination, type TabCoordination } from './sessionTabCoordination';
 import { classifyAuthFailure } from './authFailure';
@@ -9,13 +9,15 @@ type Result = { error: unknown; data: { session: SessionTokens | null } };
 type Auth = {
   getSession(): Promise<Result>;
   setSession(tokens: SessionTokens): Promise<Result>;
-  signOut(): Promise<{ error: unknown }>;
+  signOut(options: { scope: 'local' }): Promise<{ error: unknown }>;
 };
 export type BrowserAuthState = {
-  phase: 'unknown' | 'syncing' | 'authed' | 'anon' | 'error' | 'logging-out';
+  phase: 'unknown' | 'syncing' | 'authed' | 'anon' | 'error' | 'logging-out' | 'reauth';
   operation?: 'sync' | 'logout';
   message?: string;
   interactiveLogout?: boolean;
+  sessionMissing?: boolean;
+  cookiesVerified?: boolean;
 };
 
 /** Serializes cookie writes, SDK adoption and logout. Shared by callback and gate.
@@ -26,6 +28,7 @@ export class BrowserSession {
   private listeners = new Set<(state: BrowserAuthState) => void>();
   private queue: Promise<unknown> = Promise.resolve();
   private syncFlight: Promise<boolean> | null = null;
+  private syncProof: { verified: boolean } | null = null;
   private logoutFlight: Promise<boolean> | null = null;
   private confirmed: SessionTokens | null = null;
   private pendingAdoption: SessionTokens | null = null;
@@ -34,10 +37,11 @@ export class BrowserSession {
   private logoutBlocked = false;
   private serverSignedOut = false;
   private initialized = false;
+  private recoveryFailure: BrowserAuthState | null = null;
   private interactiveLogout = false;
 
   constructor(private auth: Auth, private sync = postSessionSync, private clear = postSessionLogout,
-    private tabs?: TabCoordination) {}
+    private tabs?: TabCoordination, private recover = postSessionRecovery) {}
   subscribe(listener: (state: BrowserAuthState) => void) {
     this.listeners.add(listener);
     listener(this.state);
@@ -49,8 +53,10 @@ export class BrowserSession {
     this.state = state;
     this.listeners.forEach(listener => listener(state));
   }
-  private enqueue(work: () => Promise<boolean>) {
-    const task = this.queue.then(() => this.tabs ? this.tabs.exclusive(work) : work());
+  private enqueue(work: () => Promise<boolean>, operation: 'sync' | 'logout' = 'sync') {
+    const task = this.queue.then(() => this.tabs ? this.tabs.exclusive(work) : work()).catch(() =>
+      this.fail(operation, operation === 'logout' ? 'Не удалось завершить выход. Повторите попытку.'
+        : 'Не удалось синхронизировать сессию. Повторите попытку.'));
     this.queue = task.catch(() => {});
     return task;
   }
@@ -61,7 +67,14 @@ export class BrowserSession {
   }
   synchronize(force = false): Promise<boolean> {
     if (this.logoutBlocked) return Promise.resolve(false);
-    if (this.syncFlight) return this.syncFlight;
+    if (this.syncFlight) {
+      const flight = this.syncFlight, proof = this.syncProof;
+      // A forced recovery may share a real cookie verification, but not a
+      // background flight that merely reused the in-memory confirmation.
+      return force ? flight.then(ok => ok && !proof?.verified ? this.synchronize(true) : ok) : flight;
+    }
+    const proof = { verified: false };
+    this.syncProof = proof;
     const task = this.enqueue(async () => {
       if (this.logoutBlocked) return false;
       try {
@@ -70,17 +83,38 @@ export class BrowserSession {
         // of that exact pair first, rather than rotating an old refresh token.
         if (this.pendingAdoption) return await this.adopt();
         const { data, error } = await this.auth.getSession();
-        if (error) return this.fail('sync',
-          classifyAuthFailure(error as Parameters<typeof classifyAuthFailure>[0]) === 'rate-limit'
-            ? 'Превышен лимит запросов. Повторите попытку позже.' : 'Не удалось проверить сессию. Повторите попытку.');
-        if (!data.session) {
-          // Missing browser storage alone is not a reason to delete server cookies.
+        const kind = error ? classifyAuthFailure(error as Parameters<typeof classifyAuthFailure>[0]) : null;
+        if (error && kind !== 'invalid') return this.fail('sync', kind === 'rate-limit'
+          ? 'Превышен лимит запросов. Повторите попытку позже.' : 'Не удалось проверить сессию. Повторите попытку.');
+        if (!data.session || kind === 'invalid') {
           this.confirmed = null;
-          this.publish({ phase: 'anon' });
-          return false;
+          // Old versions may have rotated only the cookie copy. Recover that
+          // session if SDK storage is absent/rejected, before offering login.
+          if (this.serverSignedOut) { this.publish({ phase: 'anon' }); return false; }
+          if (this.recoveryFailure && !force) {
+            this.publish(this.recoveryFailure);
+            return false;
+          }
+          const result = await this.recover();
+          if (!result.ok) {
+            if (result.status === 401) {
+              this.publish({ phase: 'reauth', sessionMissing: result.missing === true,
+                message: result.missing ? 'Сессия входа отсутствует. Повторите вход.'
+                  : 'Сессия отклонена сервером. Повторите вход через Google.' });
+            } else {
+              this.fail('sync', result.status === 429
+                ? 'Превышен лимит запросов. Повторите попытку позже.' : 'Не удалось проверить сессию. Повторите попытку.');
+            }
+            this.recoveryFailure = this.state;
+            return false;
+          }
+          this.pendingAdoption = result.session;
+          this.pendingSource = null;
+          proof.verified = true;
+          return await this.adopt();
         }
         const tokens = data.session;
-        if (this.confirmed?.access_token === tokens.access_token && this.confirmed.refresh_token === tokens.refresh_token) {
+        if (!force && this.confirmed?.access_token === tokens.access_token && this.confirmed.refresh_token === tokens.refresh_token) {
           this.publish({ phase: 'authed' });
           return true;
         }
@@ -94,22 +128,27 @@ export class BrowserSession {
             this.failedTokens.refresh_token === tokens.refresh_token) {
           return this.fail('sync', 'Сессия не синхронизирована. Повторите попытку.');
         }
+        this.confirmed = null;
         const result = await this.sync(tokens);
         if (!result.ok) {
           this.failedTokens = { access_token: tokens.access_token, refresh_token: tokens.refresh_token };
+          if (result.status === 401) {
+            this.publish({ phase: 'reauth', message: 'Сессия отклонена сервером. Повторите вход через Google.' });
+            return false;
+          }
           return this.fail('sync', result.status === 429 ? 'Превышен лимит запросов. Повторите попытку позже.' :
-            result.status === 401 ? 'Сессия отклонена сервером. Повторите вход через Google.' :
             'Не удалось синхронизировать сессию. Повторите попытку.');
         }
         this.pendingAdoption = result.session;
         this.pendingSource = tokens;
+        proof.verified = true;
         return await this.adopt();
       } catch {
         return this.fail('sync', 'Не удалось синхронизировать сессию. Повторите попытку.');
       }
     });
     this.syncFlight = task;
-    void task.finally(() => { if (this.syncFlight === task) this.syncFlight = null; });
+    void task.finally(() => { if (this.syncFlight === task) { this.syncFlight = null; this.syncProof = null; } });
     return task;
   }
   private async adopt() {
@@ -119,7 +158,7 @@ export class BrowserSession {
     const matches = (other: SessionTokens | null) => !!other &&
       current.data.session?.access_token === other.access_token &&
       current.data.session.refresh_token === other.refresh_token;
-    if (!matches(this.pendingSource) && !matches(tokens)) {
+    if (!(this.pendingSource === null && !current.data.session) && !matches(this.pendingSource) && !matches(tokens)) {
       // OAuth/signout or another SDK refresh happened while fetch was pending.
       // Do not overwrite the newer browser identity with the old response.
       this.pendingAdoption = null;
@@ -136,16 +175,19 @@ export class BrowserSession {
     this.confirmed = tokens;
     this.serverSignedOut = false;
     this.initialized = true;
+    this.recoveryFailure = null;
     this.pendingAdoption = null;
     this.pendingSource = null;
     this.failedTokens = null;
-    this.publish({ phase: 'authed' });
+    this.publish({ phase: 'authed', cookiesVerified: true });
     return !this.logoutBlocked;
   }
-  /** SIGNED_OUT emitted during explicit logout is handled by that same task. */
+  /** SDK rejection is recoverable and must not unmount an open form or erase
+   * cookies that may contain a newer generation. Explicit logout owns clearing.
+   */
   signedOut() {
-    if (this.logoutBlocked || this.serverSignedOut) return Promise.resolve(this.serverSignedOut && !this.logoutBlocked);
-    return this.logout(false);
+    if (this.logoutBlocked || this.serverSignedOut) return Promise.resolve(false);
+    return this.synchronize();
   }
   logout(revoke = true): Promise<boolean> {
     if (this.logoutFlight) return this.logoutFlight;
@@ -156,7 +198,7 @@ export class BrowserSession {
     const task = this.enqueue(async () => {
       try {
         if (revoke) {
-          const { error } = await this.auth.signOut();
+          const { error } = await this.auth.signOut({ scope: 'local' });
           if (error) return this.fail('logout', 'Не удалось завершить сессию Supabase. Выход не выполнен. Повторите попытку.');
         }
         const { data, error } = await this.auth.getSession();
@@ -180,7 +222,7 @@ export class BrowserSession {
         this.publish({ phase: 'anon' });
         return true;
       } catch { return this.fail('logout', 'Не удалось завершить выход. Повторите попытку.'); }
-    });
+    }, 'logout');
     this.logoutFlight = task;
     void task.finally(() => { if (this.logoutFlight === task) this.logoutFlight = null; });
     return task;
@@ -190,7 +232,7 @@ export class BrowserSession {
 export function authRedirect(state: BrowserAuthState, pathname: string, guest = false): string | null {
   const locale = localeFromPath(pathname);
   pathname = stripLocale(pathname);
-  if (state.phase === 'anon' && !guest && pathname !== '/login' && pathname !== '/auth/callback') return localizedPath('/login', locale);
+  if (state.phase === 'anon' && !guest && pathname !== '/login' && pathname !== '/auth/callback' && pathname !== '/auth/recover') return localizedPath('/login', locale);
   if (state.phase === 'authed' && pathname === '/login') return localizedPath('/', locale);
   return null;
 }

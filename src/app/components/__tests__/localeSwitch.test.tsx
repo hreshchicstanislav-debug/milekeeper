@@ -34,7 +34,7 @@ it('saves the originating English locale while keeping the exact shared OAuth ca
   expect(mocks.store).toHaveBeenCalledWith('milekeeper:oauth-locale', 'en');
   expect(document.cookie).toContain('mk_locale=en;'); expect(mocks.assign).toHaveBeenCalledOnce();
 });
-it.each(['/login', '/en/login', '/auth/callback'])('does not prefetch stale anonymous redirects on %s', async pathname => {
+it.each(['/login', '/en/login', '/auth/callback', '/auth/recover'])('does not prefetch stale anonymous redirects on %s', async pathname => {
   mocks.pathname = pathname; await mount(<BottomNav />);
   for (const link of tree!.root.findAllByType('a')) expect(link.props.prefetch).toBe(false);
 });

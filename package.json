@@ -14,6 +14,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "test:auth-recovery:browser": "node scripts/test-auth-recovery-browser.cjs",
     "test:db-security": "python3 scripts/test-db-security.py",
     "test:watch": "vitest",
     "supabase:login": "supabase login",

@@ -159,6 +159,8 @@ export const EN = {
   'Сессия браузера осталась активной. Выход не подтверждён. Повторите попытку.': 'Your browser session is still active. Sign-out could not be confirmed. Please try again.',
   'Сессия браузера завершена, но серверные cookies не очищены. Повторите выход.': 'Your browser session ended, but server cookies could not be cleared. Please sign out again.',
   'Не удалось обновить сессию. Пожалуйста, повторите загрузку страницы позже.': 'Could not refresh your session. Please reload the page later.',
+  'Восстанавливаем сессию…': 'Restoring your session…',
+  'Войдите в той же учётной записи в новой вкладке, затем вернитесь сюда и нажмите «Повторить». Введённые данные остаются в этой вкладке.': 'Sign in to the same account in a new tab, then return here and press Retry. Your entered data stays in this tab.',
   'Недостаточно данных': 'Not enough data', 'Нет данных об интервалах обслуживания': 'No maintenance intervals available',
   'Нет данных для расчёта по пробегу': 'Not enough data for a mileage calculation',
   'Недостаточно данных для прогноза': 'Not enough data for a forecast',

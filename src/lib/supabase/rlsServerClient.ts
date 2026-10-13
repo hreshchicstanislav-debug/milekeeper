@@ -17,22 +17,6 @@ function getEnv() {
   return { url, anonKey };
 }
 
-let hasWarnedAboutUnpersistedRefresh = false;
-
-function warnAboutUnpersistedRefresh() {
-  if (process.env.NODE_ENV === 'production' || hasWarnedAboutUnpersistedRefresh) {
-    return;
-  }
-  hasWarnedAboutUnpersistedRefresh = true;
-  console.warn(
-    '[auth] Access token expired between the request boundary and a data call, so the ' +
-      'refresh happened inside the render. The rotated token could NOT be written back to ' +
-      'the cookies (Server Components cannot set cookies). This request is served correctly, ' +
-      'but the cookies are one generation behind until the browser or middleware resyncs. ' +
-      'If this fires often, ACCESS_TOKEN_REFRESH_MARGIN_SEC is too small.'
-  );
-}
-
 /**
  * Resolve the RLS-scoped Supabase client and the authenticated user id for the
  * current server request.
@@ -55,7 +39,7 @@ function warnAboutUnpersistedRefresh() {
  * What the dedupe buys us: the Home render fans out into four data functions.
  * Before, each built its own client, its own session and its own refresh —
  * four concurrent refreshes of the same refresh token. Now they all await one
- * initialization: one client, one `setSession()`, at most one refresh.
+ * initialization: one client, one `getUser()`, no server-only refresh.
  */
 export const getRlsClientAndUserId = cache(async () => {
   const { url, anonKey } = getEnv();
@@ -69,6 +53,7 @@ export const getRlsClientAndUserId = cache(async () => {
   }
 
   const supabase = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -76,16 +61,10 @@ export const getRlsClientAndUserId = cache(async () => {
     },
   });
 
-  // setSession() attaches the session so auth.uid() is available for RLS, and
-  // it is also the identity check: for a live access token auth-js calls
-  // GET /auth/v1/user, and for an expired one it exchanges the refresh token at
-  // POST /auth/v1/token. Either way the user it returns comes from Supabase
-  // Auth, not from decoding the JWT locally — so there is no reason to spend a
-  // second round-trip on getUser() afterwards.
-  const { data, error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
+  // Validate with Auth; attach the same JWT to PostgREST without setSession.
+  // setSession can refresh expired tokens even with autoRefreshToken=false,
+  // losing the rotated pair inside renders/actions that cannot persist it.
+  const { data, error } = await supabase.auth.getUser(accessToken);
 
   if (error) {
     const kind = classifyAuthFailure(error);
@@ -98,16 +77,8 @@ export const getRlsClientAndUserId = cache(async () => {
     }
     throw new AuthenticationUnavailableError(kind);
   }
-  if (!data.session || !data.user) {
+  if (!data.user) {
     throw new AuthenticationRequiredError();
-  }
-
-  if (data.session.refresh_token !== refreshToken) {
-    // Fallback path: middleware should have refreshed at the boundary, but the
-    // token expired in between. The request itself is fine — the client holds
-    // the fresh session in memory and PostgREST will use it — yet the rotated
-    // token is genuinely lost, and we say so instead of pretending otherwise.
-    warnAboutUnpersistedRefresh();
   }
 
   return { supabase, userId: data.user.id };
