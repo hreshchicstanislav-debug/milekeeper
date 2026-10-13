@@ -338,3 +338,49 @@ Rollback deployment проверен как READY:
 
 До финального подтверждения production не переключается. Реальный Google login,
 Safari/iOS и установленная мобильная PWA остаются обязательной ручной приёмкой.
+
+### Staged build готов к окончательному подтверждению
+
+Полный комплект исправлений сохранён и отправлен в GitHub:
+`02ee4d0ba8df1de461c8ff53f1b03108451cdc74` в `codex/mobile-auth-recovery`.
+Tracked working tree после commit чист; untracked `artifacts/` остаются локальными
+и не входят ни в commit, ни в загрузку. Проверка секретов охватила все новые/изменённые
+файлы и весь исходный архив: совпадений для private keys, real JWT literals,
+Supabase secret keys, GitHub/Google/Vercel tokens нет. Это проверка известных
+шаблонов и просмотр diff, а не абсолютная гарантия отсутствия любого вида секрета.
+
+Vercel Git integration успешно создала preview этой ветки; production-сборка
+отдельно создана штатным CLI через `--prod --skip-domain`, с неизменными
+production env и metadata, указывающей полный SHA исходного commit.
+251 загружаемый файл сверён с SHA-256 manifest чистого архива. Зависимости
+установлены из прежнего lockfile, remote `next build` прошёл на Node.js 24.x.
+
+- Staged deployment: `dpl_3914nXp5RTh2MiyCox25ocFN5fEQ`, **READY**, target production.
+- URL: `https://milekeeper-rj9kowzaw-stanislavs-projects-b731a3ea.vercel.app`.
+- Source commit: `02ee4d0ba8df1de461c8ff53f1b03108451cdc74`.
+- Production: `https://milekeeper.vercel.app`, пока прежний
+  `dpl_331JSB9NvYozWnsuAwfcF7E4EfjN`; оба production aliases не изменены.
+- Promotion этого production build не требует повторной сборки.
+
+Предварительные проверки через authenticated `vercel curl`: **13/13 passed**.
+Без credentials `/` и `/en` отвечают 307 на `/auth/recover` с правильным `next`;
+RU/EN login и recovery HTML отвечают 200 и содержат локализованный интерфейс.
+Оба demo отвечают 200. Оба manifests имеют правильные start_url и scope.
+Recovery API без cookies даёт 401 `missing_session`, с чужим Origin — 403,
+с неожиданным JSON — 400. Ответы auth не меняют cookies и имеют no-store.
+Не запускались реальные RT exchanges, запись данных или Keep Alive endpoint.
+
+В 16 опубликованных client chunks подтверждён прежний Supabase project URL;
+локального fixture URL и Supabase secret key strings нет.
+Журнал staged deployment за окно smoke-проверок: **0 error entries**.
+Это ограниченная read-only проверка HTTP и серверных журналов, не проверка
+настоящего Google входа или установленной iOS PWA. Локальные 496 тестов и
+33 browser scenarios с synthetic provider относятся к тому же коду релиза.
+Прежние ограничения tsc/lint, описанные выше, сохраняются.
+
+Последняя проверка Vercel подтвердила прежние production target, aliases и
+cron deployment, а GitHub `main` остался на `664da09`. Rollback deployment READY.
+Перед promotion требуется окончательное подтверждение пользователя.
+После подтверждения проверить основной домен и журналы, затем вручную принять
+Google OAuth и мобильную PWA. Изменение этого раздела отчёта отдельным docs commit
+не меняет исполняемый код staged build.
