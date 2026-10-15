@@ -37,12 +37,16 @@ describe('datetimeLocal', () => {
       const result = toDateTimeLocalValue(utcDate);
       
       // Then: should use local time components (not UTC)
-      // The exact value depends on test environment timezone, but should NOT be "10:00"
-      const localHours = utcDate.getHours(); // Local hours
-      const expected = `2026-01-08T${String(localHours).padStart(2, '0')}:00`;
+      // The exact value depends on the test time zone, including the local date
+      // (UTC+14 is already January 9), so build it from local getters.
+      const pad = (value: number) => String(value).padStart(2, '0');
+      const expected = `${utcDate.getFullYear()}-${pad(utcDate.getMonth() + 1)}-${pad(utcDate.getDate())}` +
+        `T${pad(utcDate.getHours())}:${pad(utcDate.getMinutes())}`;
       expect(result).toBe(expected);
-      // Verify it's not the UTC time
-      expect(result).not.toBe('2026-01-08T10:00');
+      // Local and UTC components can only differ when the local offset is not zero
+      if (utcDate.getTimezoneOffset() !== 0) {
+        expect(result).not.toBe('2026-01-08T10:00');
+      }
     });
   });
 
