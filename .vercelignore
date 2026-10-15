@@ -11,3 +11,6 @@ supabase/.temp
 *.tsbuildinfo
 .DS_Store
 **/.DS_Store
+artifacts
+playwright-report
+test-results
