@@ -7,6 +7,7 @@ function odometerEntry(occurredAt: Date, mileageKm: number): OdometerEntry {
   const iso = occurredAt.toISOString();
   return {
     id: `${iso}:${mileageKm}`,
+    user_id: 'user-1',
     occurred_at: iso,
     mileage_km: mileageKm,
     note: null,
@@ -18,6 +19,7 @@ function serviceEvent(occurredAt: Date, mileageKm: number): ServiceEvent {
   const iso = occurredAt.toISOString();
   return {
     id: `${iso}:${mileageKm}`,
+    user_id: 'user-1',
     service_item_id: 'item-1',
     occurred_at: iso,
     mileage_km: mileageKm,
@@ -80,6 +82,7 @@ describe('TO-BE MVP: mileage + forecast calculations (docs/calculations/mileage-
   it('Scenario 4: time-mode daysLeftTime decreases by 1 when today advances (no mileage input)', () => {
     const item: ServiceItem = {
       id: 'item-1',
+      user_id: 'user-1',
       title: 'Time item',
       interval_km: null,
       interval_days: 365,
@@ -116,6 +119,7 @@ describe('TO-BE MVP: mileage + forecast calculations (docs/calculations/mileage-
   it('Scenario 5: km-mode with valid dailyRate uses ceil(kmLeft / dailyRate)', () => {
     const item: ServiceItem = {
       id: 'item-1',
+      user_id: 'user-1',
       title: 'Km item',
       interval_km: 10000,
       interval_days: null,

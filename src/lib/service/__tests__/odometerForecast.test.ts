@@ -14,6 +14,7 @@ describe('odometerForecast', () => {
         date.setDate(date.getDate() + i);
         entries.push({
           id: `entry-${i}`,
+          user_id: 'user-1',
           occurred_at: date.toISOString(),
           mileage_km: 150000 + (i * 50), // 50 km per day
           note: null,
@@ -51,6 +52,7 @@ describe('odometerForecast', () => {
       // Given: only one entry
       const entries: OdometerEntry[] = [{
         id: 'entry-1',
+        user_id: 'user-1',
         occurred_at: '2026-01-01T00:00:00Z',
         mileage_km: 150000,
         note: null,
@@ -70,6 +72,7 @@ describe('odometerForecast', () => {
       const entries: OdometerEntry[] = [
         {
           id: 'entry-old',
+          user_id: 'user-1',
           occurred_at: new Date(anchorNow.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
           mileage_km: 150000,
           note: null,
@@ -77,6 +80,7 @@ describe('odometerForecast', () => {
         },
         {
           id: 'entry-new',
+          user_id: 'user-1',
           occurred_at: anchorNow.toISOString(),
           mileage_km: 151000,
           note: null,

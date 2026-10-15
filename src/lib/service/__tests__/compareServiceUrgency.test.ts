@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { compareServiceUrgency } from '../calcServiceStatus';
-import type { ServiceItem, ServiceStatusResult } from '@/lib/db/types';
+import type { ServiceStatusResult } from '../calcServiceStatus';
+import type { ServiceItem } from '@/lib/db/types';
 
 // Helper to create a minimal ServiceItem
 function createServiceItem(overrides: Partial<ServiceItem>): ServiceItem {
   return {
     id: 'test-item',
+    user_id: 'user-1',
     title: 'Test Item',
     interval_km: null,
     interval_days: null,

@@ -5,6 +5,7 @@ import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 function createServiceItem(overrides: Partial<ServiceItem>): ServiceItem {
   return {
     id: 'test-item',
+    user_id: 'user-1',
     title: 'Test Item',
     interval_km: null,
     interval_days: null,
@@ -21,6 +22,7 @@ function createServiceItem(overrides: Partial<ServiceItem>): ServiceItem {
 function createServiceEvent(overrides: Partial<ServiceEvent>): ServiceEvent {
   return {
     id: 'test-event',
+    user_id: 'user-1',
     service_item_id: 'test-item',
     occurred_at: '2026-01-01T12:00:00Z',
     mileage_km: 150000,
