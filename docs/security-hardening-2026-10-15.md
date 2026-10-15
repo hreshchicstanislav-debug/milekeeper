@@ -522,6 +522,31 @@ production-дерево без известных advisory. Коммит и push
 работодателем при честном объяснении оставшихся пунктов (ориентировочно 7/10 против
 6/10 в portfolio review); после пунктов 6–9 — около 8/10.
 
+## Выпуск в production — 15 октября 2026
+
+Раздел добавлен после выпуска; выводы выше описывают состояние до него. Ветка выпущена
+после отдельного подтверждения владельца по схеме из раздела 11: штатный CLI собрал
+production-сборку коммита `8724c011d8c7578952f554727c65ec29d460fcbb` без назначения
+домена, затем тот же build продвинут на основной домен.
+
+| Проверка (read-only API Vercel, 16.10.2026) | Результат |
+| --- | --- |
+| Deployment | `dpl_5GPfj4gZhnT5PLpAmwRCDyPLbk7U`: READY, production, source CLI, сборка 15.10 15:29 UTC |
+| `milekeeper.vercel.app` | назначен на этот deployment 15.10 16:06 UTC |
+| Rollback | предыдущий production deployment (`02ee4d0`) READY |
+| Переменные окружения | `SUPABASE_SERVICE_ROLE_KEY` и `CRON_SECRET` — только Production |
+
+Тем же днём отдельными согласованными шагами выполнены пункт 4 раздела 12 в части ключей
+(preview-сборки больше не получают service role key и `CRON_SECRET`; URL и publishable/anon
+key проекта Supabase у preview остаются, доступ к данным ограничивает RLS), удаление старых
+deployments, собранных с прежними настройками, включая январские сборки до авторизации,
+и отзыв automation bypass secret Vercel Deployment Protection.
+
+Публичный smoke 16.10.2026: `/demo`, `/en/demo`, `/login`, `/en/login` и manifest — 200;
+`/` и `/en` без сессии — 307 на `/auth/recover`; `/api/keep-alive` без заголовка — 401.
+По подтверждению владельца приложение работает на реальном телефоне, а Keep Alive после
+выпуска выполнен успешно.
+
 ## Источники
 
 - GitHub Advisory Database: `https://github.com/advisories/<GHSA-ID>` (все ID выше)

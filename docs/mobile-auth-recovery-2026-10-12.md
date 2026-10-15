@@ -384,3 +384,57 @@ cron deployment, а GitHub `main` остался на `664da09`. Rollback deploy
 После подтверждения проверить основной домен и журналы, затем вручную принять
 Google OAuth и мобильную PWA. Изменение этого раздела отчёта отдельным docs commit
 не меняет исполняемый код staged build.
+
+## Production promotion выполнен — 13 октября 2026
+
+Пользователь явно подтвердил promotion именно
+`dpl_3914nXp5RTh2MiyCox25ocFN5fEQ` на `milekeeper.vercel.app`.
+13 октября около **03:04 UTC** штатная команда
+`vercel promote dpl_3914nXp5RTh2MiyCox25ocFN5fEQ --scope stanislavs-projects-b731a3ea --yes`
+завершилась успешно. Основной production URL: **https://milekeeper.vercel.app**.
+Исполняемый код — source commit `02ee4d0ba8df1de461c8ff53f1b03108451cdc74`.
+
+Promotion выполнен без новой сборки: deployment ID, createdAt, buildingAt и ready
+совпали с проверенным staged build. Vercel project production target и отдельный
+API `/v4/aliases/milekeeper.vercel.app` подтвердили назначение нового deployment.
+Поле `alias` в исходном deployment record не использовалось как единственное
+доказательство назначения: после promotion оно сохраняло старый список.
+Новые deployments для выпуска не создавались; `main`, настройки env/OAuth,
+код Keep Alive, схема БД и пользовательские данные не менялись.
+
+Проверки на основном production-домене:
+
+- **13/13 HTTP smoke passed**: `/`, `/en`, RU/EN login, RU/EN recovery,
+  RU/EN demo, оба manifests и безопасные recovery API проверки.
+- **14/14 browser smoke passed** в изолированных анонимных Chrome contexts с
+  мобильным viewport: прямое открытие, reload, новая вкладка из закладки,
+  manifest start_url, отдельный login/recovery и demo для RU/EN.
+  `/` без сессии завершает цепочку на `/login`, `/en` — на `/en/login`.
+  Проверены доступность Google-кнопок, завершение навигации и ограниченное число
+  запросов. Циклических редиректов, client runtime errors и ответов 5xx нет.
+- Vercel logs нового deployment с 03:04 UTC за окно smoke: **0 error entries,
+  0 server 5xx**. Отдельные 400/401/403 recovery API были ожидаемыми отрицательными
+  проверками без credentials, а не ошибками восстановления реальной сессии.
+- Supabase Auth за **03:03:50–03:07:14 UTC**: 19 событий,
+  **0 Invalid Refresh Token**, **0 error/fatal level events**.
+  Результат относится к короткому окну наблюдения и не заменяет настоящий вход.
+
+Keep Alive проверен read-only: Supabase project ACTIVE_HEALTHY, 31 ping,
+два за последние 48 часов; последний успешный ping —
+**2026-10-12 12:34:56.905 UTC**. Vercel cron enabled, undeployed/modified пусты,
+тот же endpoint `/api/keep-alive` и schedule `0 12 * * *`; scheduler теперь
+назначен новому production deployment. Следующее обычное окно —
+**13 октября 12:00–12:59 UTC / 17:00–17:59 Алматы**. Первый плановый ping после
+этого promotion ещё не наступил на момент проверки; вручную endpoint не вызывался.
+Работа последнего планового запуска и сохранение активного расписания подтверждены.
+
+Rollback `dpl_331JSB9NvYozWnsuAwfcF7E4EfjN` сохранён и повторно проверен READY.
+Команда отката из раздела выше остаётся действительной. Критическая проблема
+не подтверждена; откат не выполнялся. Реальный Google OAuth, Safari/iOS и
+установленная мобильная PWA остаются на отдельную ручную приёмку пользователя.
+
+Результаты сохранены локально в `artifacts/mobile-auth-recovery/release-2026-10-13/`:
+`production-release.json`, `production-smoke.json`, `production-browser.json`,
+`production-log-summary.json`, `production-supabase-summary.json`.
+Этот итоговый раздел обновлён локально без push, чтобы не запускать дополнительную
+Git preview-сборку. Исполняемый production build не изменён.
