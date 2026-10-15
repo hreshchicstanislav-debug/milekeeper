@@ -1,5 +1,10 @@
 {
   "regions": ["syd1"],
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "crons": [
     {
       "path": "/api/keep-alive",

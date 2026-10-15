@@ -89,6 +89,7 @@ Not automated: real Google OAuth, Safari on iOS and the installed PWA. They are 
 ## Release process
 
 - Work happens on feature branches. A production release is built from a reviewed commit with the Vercel CLI as a staged deployment without the domain, smoke-tested, then promoted. The previous deployment stays ready for an instant rollback.
+- Pushing to `main` does not deploy: [`vercel.json`](vercel.json) turns off Git deployments for that branch, so production changes only through the staged CLI release.
 - Each step — branch push, preview, production promotion, updating `main` — is approved separately.
 - Releases and investigations are recorded as dated documents in [`docs/`](docs/README.md) (mostly in Russian).
 
