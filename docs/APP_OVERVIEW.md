@@ -1,3 +1,6 @@
+> **Исторический документ / Historical reference.** Описывает раннюю версию или диагностику, а не текущее состояние. Актуальные возможности, авторизация, окружение и запуск: [README на русском](../README.ru.md) · [English README](../README.md).
+> Describes an earlier implementation or investigation, not the current application. Use the linked README for current features, authentication, environment and setup.
+
 # Обзор приложения MileKeeper
 
 ## Назначение
