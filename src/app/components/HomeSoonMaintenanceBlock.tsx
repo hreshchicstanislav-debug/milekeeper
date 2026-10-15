@@ -186,7 +186,7 @@ export default function HomeSoonMaintenanceBlock({
                       marginTop: 'var(--sp-1, 0.25rem)',
                       fontFamily: 'monospace'
                     }}>
-                      statusText="{systemText(statusVM.statusText)}", daysToReplace={statusVM.daysToReplace ?? 'null'}, isPredictionReliable={statusVM.isPredictionReliable ? 'true' : 'false'}
+                      statusText=&quot;{systemText(statusVM.statusText)}&quot;, daysToReplace={statusVM.daysToReplace ?? 'null'}, isPredictionReliable={statusVM.isPredictionReliable ? 'true' : 'false'}
                       {!statusVM.isPredictionReliable && (
                         <span style={{ color: 'rgba(255, 0, 0, 0.6)' }}>
                           {' '}(unreliable: {isFallbackRate ? 'isFallbackRate' : ''}{dailyKmRate === 30 ? 'dailyKmRate=30' : ''})

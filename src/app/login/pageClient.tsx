@@ -23,7 +23,6 @@ export default function LoginPageClient() {
       setLocalError(e instanceof Error ? e.message : String(e));
       return null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleGoogleLogin = async () => {
