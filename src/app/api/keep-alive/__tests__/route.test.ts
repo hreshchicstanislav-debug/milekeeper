@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.useRealTimers();
 });
@@ -41,5 +42,27 @@ describe('server keep-alive', () => {
     const response = await GET(new Request('https://example.test/api/keep-alive'));
     expect(response.status).toBe(401);
     expect(mocks.admin).not.toHaveBeenCalled();
+  });
+
+  it.each(['Bearer test-cron-secreT', 'Bearer test-cron-secre', 'Bearer test-cron-secret-extra', 'bearer test-cron-secret', 'test-cron-secret'])(
+    'rejects the near-miss header %j', async authorization => {
+      const response = await GET(new Request('https://example.test/api/keep-alive', { headers: { authorization } }));
+      expect(response.status).toBe(401);
+      expect(mocks.admin).not.toHaveBeenCalled();
+    });
+
+  // `Bearer ${undefined}` used to be the expected header when the secret was absent.
+  it.each([
+    ['missing', undefined, 'Bearer undefined'],
+    ['empty', '', 'Bearer '],
+    ['blank', '   ', 'Bearer    '],
+  ])('fails closed when CRON_SECRET is %s', async (_, secret, authorization) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    if (secret === undefined) delete process.env.CRON_SECRET;
+    else vi.stubEnv('CRON_SECRET', secret);
+    const response = await GET(new Request('https://example.test/api/keep-alive', { headers: { authorization } }));
+    expect(response.status).toBe(401);
+    expect(mocks.admin).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith('[keep-alive] CRON_SECRET is not configured; refusing request');
   });
 });

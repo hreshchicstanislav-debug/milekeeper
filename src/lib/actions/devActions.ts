@@ -20,6 +20,19 @@ interface SeedResult {
 let isResetting = false;
 
 /**
+ * Hiding DevToolsPanel is not access control: every export of a 'use server'
+ * module that reaches the action manifest is a POST endpoint. Whether these
+ * land in a production manifest depends on the bundler's dead-code
+ * elimination (webpack keeps them, Turbopack currently drops them), so refuse
+ * here, before cookies or the database are touched.
+ */
+function assertDevActionsEnabled(): void {
+  if (process.env.NODE_ENV !== 'development') {
+    throw new Error('Dev actions are disabled outside development');
+  }
+}
+
+/**
  * Helper: Find date for a given mileage by interpolating between odometer entries
  * @param entries Odometer entries sorted by mileage_km ascending
  * @param targetMileage Target mileage to find date for
@@ -77,6 +90,7 @@ function findDateForMileage(entries: OdometerEntry[], targetMileage: number): Da
  * @throws Error if data already exists (unless skipExistenceCheck is true)
  */
 export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResult> {
+  assertDevActionsEnabled();
   const { supabase, userId } = await getRlsClientAndUserId();
 
   // Check if data already exists (unless skipExistenceCheck is true)
@@ -288,6 +302,7 @@ export async function seedDemoData(skipExistenceCheck = false): Promise<SeedResu
  * @throws Error if no odometer entries exist
  */
 export async function simulateTrip(): Promise<OdometerEntry> {
+  assertDevActionsEnabled();
   const result = await simulateTripRange('day');
   return result.entry;
 }
@@ -310,6 +325,7 @@ export async function simulateTripRange(
   range: 'day' | 'week' | 'month',
   baseNowIso?: string
 ): Promise<SimulateTripResult> {
+  assertDevActionsEnabled();
   const { supabase, userId } = await getRlsClientAndUserId();
 
   // Get entry with maximum mileage_km (to satisfy monotonic constraints)
@@ -452,6 +468,7 @@ export async function simulateTripRange(
  * @throws Error if operation is already in progress
  */
 export async function resetAndSeedDemoData(): Promise<SeedResult> {
+  assertDevActionsEnabled();
   // Check mutex
   if (isResetting) {
     throw new Error('Демо-операция уже выполняется');
@@ -477,6 +494,7 @@ export async function resetAndSeedDemoData(): Promise<SeedResult> {
  * Deletes in order: service_events, service_items, odometer_entries
  */
 export async function wipeAllData(): Promise<{ success: boolean }> {
+  assertDevActionsEnabled();
   const { supabase, userId } = await getRlsClientAndUserId();
 
   // Delete in order to respect foreign key constraints

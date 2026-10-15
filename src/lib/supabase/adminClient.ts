@@ -1,3 +1,6 @@
+// Build-time boundary: importing this module from a Client Component fails the
+// Next.js build instead of relying only on the runtime `window` check below.
+import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 
 /**

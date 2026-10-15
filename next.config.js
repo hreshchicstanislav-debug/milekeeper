@@ -12,6 +12,14 @@ const nextConfig = {
     // Use project directory (where next.config.js is located) as absolute path
     root: __dirname,
   },
+
+  experimental: {
+    // Next 16.3 type-checks `next build` with the tsc CLI by default, which also
+    // checks __tests__ and *.test.* files; Next 16.1 ignored them during builds.
+    // Keep the previous build scope until the known test typing errors are fixed
+    // separately (`npx tsc --noEmit` still reports them), then remove this flag.
+    useTypeScriptCli: false,
+  },
 };
 
 module.exports = nextConfig;
