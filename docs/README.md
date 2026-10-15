@@ -18,6 +18,7 @@ Start with the root README for current capabilities and architecture. The docume
 | Public demo boundary and scope / Изоляция и объём демо | [Approved demo scope / Согласованный объём демо](onboarding/03-approved-scope.md) |
 | Getting started with own data / Первые шаги со своими данными | [Getting started / Первые шаги](onboarding/08-own-data-getting-started.md) |
 | Database setup and test prerequisites / Подготовка БД и запуск проверок | [Supabase notes / Инструкция Supabase](../supabase/README.md) |
+| Running the checks and browser regressions / Запуск проверок и браузерных регрессий | [Testing / Проверки](testing.md) |
 | Demo screenshots / Скриншоты демо | [Images and provenance / Изображения и происхождение](images/README.md) |
 
 ## Historical reference / Исторические материалы

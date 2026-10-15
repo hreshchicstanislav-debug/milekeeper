@@ -107,6 +107,22 @@ My part:
 - **Testing and verifying results** — reviewing the agents' changes and reports, reading automated results critically, manual acceptance on real devices: Google sign-in, Safari on iPhone, the installed PWA.
 - **Releasing the product** — staged deployments, smoke checks, rollback targets and a separate approval for every step.
 
+### Example: the public demo, 9 October 2026
+
+The documents in [`docs/onboarding`](docs/onboarding) (in Russian) record one stage from scope to correction:
+
+1. **Scope.** A [product analysis](docs/onboarding/01-product-analysis.md) and an [onboarding proposal](docs/onboarding/02-onboarding-proposal.md) came first. I approved only part of the proposal: a public RU/EN demo on fictional data and a short welcome dialog. The [approved scope](docs/onboarding/03-approved-scope.md) sets the isolation boundary — no demo user, no database writes, no session handling on the demo pages — and acceptance criteria for each slice; the rest of the proposal stayed unapproved.
+2. **Implementation.** Codex built the demo on a separate branch. Its [report](docs/onboarding/04-slice1-report.md) listed 414 passing unit tests, browser checks from 320 to 1280 px and no requests to the identity provider or private APIs from the demo pages — and one React hydration error (#418) in an early production run that later runs did not reproduce. The cause was recorded as unknown, not as fixed.
+3. **Verification.** The error came back while the welcome dialog was being checked, and that production run was [recorded as failed](docs/onboarding/05-slice1.5-report.md).
+4. **Correction.** The next iteration looked for the root cause instead of another green rerun: a deterministic reproduction failed 20 of 20 times, a minimal fix in the shared layout component made it pass 20 of 20, and the reproduction stayed in the project as the `test:demo:hydration` regression script. [Report](docs/onboarding/06-hydration-fix-report.md)
+5. **Refinement.** Then I asked for a second action, "Use my own data"; the approved scope was updated and the change was covered by unit and browser tests. [Report](docs/onboarding/07-slice1.5-own-data-report.md)
+
+Each slice ended with a local commit and stopped for my review; deployment needed a separate approval.
+
+### First version
+
+The project history starts on 4 January 2026 with a working prototype: odometer readings, maintenance items with replacement history, status calculation with unit tests and a list of upcoming maintenance. By 15 January it had revised mileage-forecast rules and Google sign-in with per-user Row Level Security. The history does not record which tools were used for that version; the tools below are documented for September–October 2026.
+
 Tools:
 
 - **ChatGPT** — product and requirement discussions, specification drafts and task descriptions for the coding agents.
@@ -139,20 +155,7 @@ npm run build                  # production build
 npm run test:db-security       # disposable local PostgreSQL; never connects to Supabase
 ```
 
-The database tests need PostgreSQL binaries (`initdb`, `pg_ctl`, `psql`); set `PG_BIN=/path/to/postgresql/bin` if they are not found. They create and remove their own socket-only cluster.
-
-The browser scripts mock the identity provider, run a local Supabase fixture and need Google Chrome plus Playwright installed outside the project:
-
-```bash
-npm install --prefix /tmp/milekeeper-browser-tools --no-save playwright
-export MILEKEEPER_PLAYWRIGHT_PATH=/tmp/milekeeper-browser-tools/node_modules/playwright
-npm run test:demo:hydration
-npm run test:auth-recovery:browser
-npm run test:i18n:browser
-npm run test:onboarding:browser
-```
-
-Run them one at a time: they share ports 3101 and 54329. The onboarding script has a known intermittent race in the test itself (it clears cookies while a session sync request may still be in flight); see section 8 of the [security-hardening report](docs/security-hardening-2026-10-15.md).
+Prerequisites for the database tests, the browser regression scripts and their known issues: [docs/testing.md](docs/testing.md).
 
 ## Repository map
 
