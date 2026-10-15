@@ -31,7 +31,7 @@
   "_comment": "Note: supabase:login and supabase:link require manual authentication. Run 'npm run supabase:login' first if not already logged in.",
   "keywords": [],
   "author": "Stanislav Khreshchik",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "description": "Car mileage and maintenance tracker built with Next.js and Supabase",
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
