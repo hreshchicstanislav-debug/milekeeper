@@ -81,3 +81,13 @@ describe('addServiceEvent ownership check', () => {
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 });
+
+describe('addServiceEvent backdating (unaffected by the odometer chronology rule)', () => {
+  it('still records a replacement dated years before the latest odometer reading', async () => {
+    const backdated = { ...input, occurredAt: new Date('2019-03-01T08:00:00Z') };
+    await expect(addServiceEvent(backdated)).resolves.toMatchObject({ id: 'event-a' });
+    expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ occurred_at: '2019-03-01T08:00:00.000Z' }));
+    // Only service_items and service_events are touched: the odometer is never written.
+    expect(mocks.from.mock.calls.map(([table]) => table)).toEqual(['service_items', 'service_events']);
+  });
+});

@@ -21,6 +21,7 @@ import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 import Link from 'next/link';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import { latestMileageGain } from '@/lib/mileage/mileageGain';
+import { pickLatestReading } from '@/lib/mileage/readingChronology';
 
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
@@ -565,7 +566,10 @@ export default async function Home() {
 
         {gettingStartedStep?.kind !== 'odometer' && (
           <div className="add-mileage-section">
-            <AddMileageForm lastMileageKm={maxMileageEntry?.mileage_km ?? null} />
+            <AddMileageForm
+              lastMileageKm={maxMileageEntry?.mileage_km ?? null}
+              latestReadingAt={pickLatestReading(odometerEntries)?.occurred_at ?? null}
+            />
           </div>
         )}
 

@@ -10,7 +10,7 @@ vi.mock('next/link', () => ({ default: ({ children, href }: WithChildren & { hre
 vi.mock('@/lib/i18n/server', async () => ({ getCopy: async () => (await import('@/lib/i18n/copy')).createCopy(mocks.pathname.startsWith('/en') ? 'en' : 'ru') }));
 vi.mock('@/lib/actions/odometerActions', () => ({ getMaxMileageEntry: mocks.max, listOdometerEntries: mocks.entries }));
 vi.mock('@/lib/actions/serviceActions', () => ({ listServiceItems: mocks.items, listLastServiceEventsForItems: mocks.events, addServiceEvent: vi.fn() }));
-vi.mock('../AddMileageForm', () => ({ default: ({ lastMileageKm }: { lastMileageKm: number | null }) => <button data-last={String(lastMileageKm)}>mileage form</button> }));
+vi.mock('../AddMileageForm', () => ({ default: ({ lastMileageKm, latestReadingAt }: { lastMileageKm: number | null; latestReadingAt: string | null }) => <button data-last={String(lastMileageKm)} data-latest-at={String(latestReadingAt)}>mileage form</button> }));
 vi.mock('../HomeContentClient', () => ({ default: ({ children }: WithChildren) => <div>{children}</div> }));
 vi.mock('../HomeSoonMaintenanceBlock', () => ({ default: () => null }));
 vi.mock('../HomeAdaptiveContent', () => ({ default: () => null }));
@@ -42,6 +42,7 @@ describe('home: latest actual gain', () => {
     const html = renderToStaticMarkup(await Home());
     expect(html.replace(/ | /g, ' ')).toContain(text);
     expect(html).toContain('data-last="150205"');
+    expect(html).toContain('data-latest-at="2026-10-05T08:00:00Z"');
   });
 
   it('omits the line without a previous reading or with backdated readings', async () => {

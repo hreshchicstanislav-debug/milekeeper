@@ -10,6 +10,7 @@ import { getRlsClientAndUserId } from '../supabase/rlsServerClient';
 import { TAGS } from '../cache/tags';
 import type { OdometerEntry, OdometerEntryInput } from '../db/types';
 import { logMileageQuery } from '../dev/mileageDiagnostics';
+import { isBeforeLatestReading, READING_BEFORE_LATEST_ERROR } from '../mileage/readingChronology';
 
 /**
  * List odometer entries, ordered by occurred_at descending
@@ -152,23 +153,41 @@ export async function getMaxMileageEntry(screenName?: string): Promise<OdometerE
 export async function addOdometerEntry(
   input: OdometerEntryInput
 ): Promise<OdometerEntry> {
+  if (!(input.occurredAt instanceof Date) || Number.isNaN(input.occurredAt.getTime())) {
+    throw new Error('Invalid reading date');
+  }
+
   const { supabase, userId } = await getRlsClientAndUserId();
-  
-  // Fetch the maximum mileage from database to validate monotonicity
-  // This matches what the database trigger uses (MAX(mileage_km))
-  // Note: getLatestOdometerEntry() returns entry by date, not by max mileage
-  const { data: maxMileageData, error: maxMileageError } = await supabase
-    .from('odometer_entries')
-    .select('mileage_km')
-    .eq('user_id', userId)
-    .order('mileage_km', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  
+
+  // Fetch the maximum mileage (monotonicity, matches the DB trigger's MAX(mileage_km))
+  // and the latest reading by date (chronology) in parallel.
+  const [
+    { data: maxMileageData, error: maxMileageError },
+    { data: latestByDateData, error: latestByDateError },
+  ] = await Promise.all([
+    supabase
+      .from('odometer_entries')
+      .select('mileage_km')
+      .eq('user_id', userId)
+      .order('mileage_km', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('odometer_entries')
+      .select('occurred_at')
+      .eq('user_id', userId)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
   if (maxMileageError && maxMileageError.code !== 'PGRST116') {
     throw new Error(`Failed to fetch max mileage: ${maxMileageError.message}`);
   }
-  
+  if (latestByDateError && latestByDateError.code !== 'PGRST116') {
+    throw new Error(`Failed to fetch latest reading: ${latestByDateError.message}`);
+  }
+
   const maxMileage = maxMileageData?.mileage_km ?? null;
 
   if (maxMileage !== null && input.mileageKm <= maxMileage) {
@@ -176,6 +195,13 @@ export async function addOdometerEntry(
       `Mileage must be greater than previous entry. ` +
       `Latest mileage: ${maxMileage} km, provided: ${input.mileageKm} km`
     );
+  }
+
+  // New readings must not be dated before the latest stored reading.
+  // Only applies to new readings; existing data is left as is.
+  const latestOccurredAt: string | null = latestByDateData?.occurred_at ?? null;
+  if (isBeforeLatestReading(input.occurredAt, latestOccurredAt)) {
+    throw new Error(`${READING_BEFORE_LATEST_ERROR}. Latest reading: ${new Date(latestOccurredAt!).toISOString()}`);
   }
   
   // Insert the new entry

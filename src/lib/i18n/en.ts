@@ -46,6 +46,7 @@ export const EN = {
   'Пробег должен быть больше предыдущего значения': 'The odometer reading must be greater than the previous reading',
   '+{value} км': '+{value} km',
   'Должно быть больше последнего показания: {value} км': 'Must be greater than the last reading: {value} km',
+  'Дата показания не может быть раньше последней записи пробега: {date}': 'The reading date cannot be earlier than the latest odometer reading: {date}',
   'Последнее показание: {value} км': 'Last reading: {value} km',
   'Между заменами: {value} км': 'Since previous replacement: {value} km',
   'На том же пробеге, что и предыдущая замена': 'Same odometer reading as the previous replacement',

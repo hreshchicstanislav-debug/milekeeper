@@ -12,15 +12,20 @@ import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
 import { previewEntryGain } from '@/lib/mileage/mileageGain';
+import { isBeforeLatestReading, latestReadingFromError, READING_BEFORE_LATEST_ERROR } from '@/lib/mileage/readingChronology';
 
 interface AddMileageFormProps {
   buttonLabel?: string;
   /** Highest actual reading (the baseline the server validates against), for the live gain hint. */
   lastMileageKm?: number | null;
+  /** `occurred_at` of the latest reading by date: new readings may not be dated earlier. */
+  latestReadingAt?: string | null;
 }
 
-export default function AddMileageForm({ buttonLabel, lastMileageKm = null }: AddMileageFormProps = {}) {
-  const { formatMileageInput, formatNumber, RU, t, intlLocale, errorMessageText } = useCopy();
+export default function AddMileageForm({ buttonLabel, lastMileageKm = null, latestReadingAt = null }: AddMileageFormProps = {}) {
+  const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
+  const dateBeforeLatestMessage = (latestIso: string) =>
+    RU.mileageForm.errorDateBeforeLatest.replace('{date}', displayDateTime(new Date(latestIso)));
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
@@ -84,8 +89,20 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null }: Ad
     let submissionOccurredAt: Date;
     if (isTestMode()) {
       submissionOccurredAt = getAppNow();
-    } else {
+    } else if (showDate) {
       submissionOccurredAt = fromDateTimeLocalValue(occurredAt);
+    } else {
+      // Date not changed by the user: record the moment of saving (the form may have
+      // been open for a while, and the minute-rounded value could fall before a
+      // reading saved in the meantime).
+      submissionOccurredAt = new Date();
+    }
+
+    // Explain the chronology rule before sending; the server enforces it as well.
+    if (isBeforeLatestReading(submissionOccurredAt, latestReadingAt)) {
+      setError(dateBeforeLatestMessage(latestReadingAt!));
+      setIsSubmitting(false);
+      return;
     }
 
     try {
@@ -128,6 +145,9 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null }: Ad
       // Переводим известные ошибки с сервера
       if (errorMessage.includes('Mileage must be greater')) {
         setError(RU.mileageForm.errorMileageMustBeGreater);
+      } else if (errorMessage.includes(READING_BEFORE_LATEST_ERROR)) {
+        const latestIso = latestReadingFromError(errorMessage) ?? latestReadingAt;
+        setError(latestIso ? dateBeforeLatestMessage(latestIso) : errorMessage);
       } else {
         setError(errorMessage);
       }

@@ -95,6 +95,7 @@ export const RU = {
     errorMileageMustBeGreater: 'Пробег должен быть больше предыдущего значения',
     gainPreview: '+{value} км',
     notGreaterHint: 'Должно быть больше последнего показания: {value} км',
+    errorDateBeforeLatest: 'Дата показания не может быть раньше последней записи пробега: {date}',
   },
   history: {
     title: 'История пробега',
