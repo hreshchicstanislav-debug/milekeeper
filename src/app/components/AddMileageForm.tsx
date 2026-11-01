@@ -11,9 +11,16 @@ import { getAppMode, AppMode, isTestMode } from '@/lib/appMode';
 import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
+import { previewEntryGain } from '@/lib/mileage/mileageGain';
 
-export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string } = {}) {
-  const { formatMileageInput, RU, t, intlLocale, errorMessageText } = useCopy();
+interface AddMileageFormProps {
+  buttonLabel?: string;
+  /** Highest actual reading (the baseline the server validates against), for the live gain hint. */
+  lastMileageKm?: number | null;
+}
+
+export default function AddMileageForm({ buttonLabel, lastMileageKm = null }: AddMileageFormProps = {}) {
+  const { formatMileageInput, formatNumber, RU, t, intlLocale, errorMessageText } = useCopy();
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
@@ -141,6 +148,9 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
   // Swipe-to-close gesture
   useSwipeToClose<HTMLFormElement>(formRef, handleCancel, isOpen);
 
+  // Recomputed on every keystroke; nothing is shown for empty, partial or invalid input.
+  const gainPreview = previewEntryGain(mileageKm, lastMileageKm);
+
   return (
     <>
       <button
@@ -189,7 +199,17 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
               disabled={isSubmitting}
               placeholder={RU.mileageForm.mileagePlaceholder}
               className="mileage-input"
+              aria-describedby={lastMileageKm !== null ? 'mileageGainPreview' : undefined}
             />
+            {lastMileageKm !== null && (
+              <p id="mileageGainPreview" className="form-field-hint mileage-gain-preview" aria-live="polite" data-gain={gainPreview.kind}>
+                {gainPreview.kind === 'gain'
+                  ? RU.mileageForm.gainPreview.replace('{value}', formatNumber(gainPreview.km))
+                  : gainPreview.kind === 'not-greater'
+                    ? RU.mileageForm.notGreaterHint.replace('{value}', formatNumber(gainPreview.lastKm))
+                    : null}
+              </p>
+            )}
           </div>
 
           <div className="form-field">

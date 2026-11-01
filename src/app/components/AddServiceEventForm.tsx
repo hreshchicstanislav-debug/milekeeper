@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from 'react';
 import { addServiceEvent } from '@/lib/actions/serviceActions';
 import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
+import { LocalDateTime } from './LocalDateTime';
 
 // Hook for swipe-to-close gesture
 function useSwipeToClose<T extends HTMLElement>(
@@ -194,7 +195,10 @@ function useSwipeToClose<T extends HTMLElement>(
 interface AddServiceEventFormProps {
   serviceItemId: string;
   serviceItemTitle: string;
+  /** Last actual odometer reading; prefilled into the field and shown as a hint. */
   defaultMileage?: number | null;
+  /** Date of that reading, if known. */
+  lastReadingAt?: string | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
@@ -204,11 +208,12 @@ export default function AddServiceEventForm({
   serviceItemId,
   serviceItemTitle,
   defaultMileage,
+  lastReadingAt = null,
   isOpen,
   onClose,
   onSuccess,
 }: AddServiceEventFormProps) {
-  const { formatMileageInput, RU, errorMessageText } = useCopy();
+  const { formatMileageInput, formatNumber, RU, errorMessageText } = useCopy();
   const [mileageKm, setMileageKm] = useState(
     defaultMileage ? formatMileageInput(String(defaultMileage)) : ''
   );
@@ -354,7 +359,14 @@ export default function AddServiceEventForm({
               disabled={isSubmitting}
               placeholder={RU.items.serviceEvent.mileagePlaceholder}
               className="mileage-input"
+              aria-describedby={defaultMileage ? 'serviceEventLastReading' : undefined}
             />
+            {defaultMileage ? (
+              <p id="serviceEventLastReading" className="form-field-hint" data-testid="service-event-last-reading">
+                {RU.items.serviceEvent.lastReading.replace('{value}', formatNumber(defaultMileage))}
+                {lastReadingAt && <> · <LocalDateTime iso={lastReadingAt} dateOnly fallback="" /></>}
+              </p>
+            ) : null}
           </div>
 
           <div className="form-field">
