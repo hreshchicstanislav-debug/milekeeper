@@ -3,31 +3,45 @@
  *
  * A new reading must not be dated earlier than the latest stored reading by date.
  * Comparison uses absolute instants, so the user's and the server's time zones do
- * not matter. Equal timestamps are allowed ("not earlier").
+ * not matter.
+ *
+ * Minute precision: the date picker and every displayed time show minutes, while stored
+ * readings may carry seconds (and PostgreSQL even microseconds). A time in the SAME minute
+ * as the latest reading is therefore not "earlier" from the user's point of view and is
+ * accepted, but it is stored just after the latest reading (+1 ms), never before it. So no
+ * reading is ever stored older than the latest one, and the date order stays unambiguous.
+ * A time in an earlier minute is rejected.
  *
  * Applies only to creating odometer readings: service events may still be backdated,
  * and existing readings are neither changed nor re-validated.
  */
 
-/** Stable marker the client uses to recognise this server-side rejection. */
-export const READING_BEFORE_LATEST_ERROR = 'Reading date must not be earlier than the latest reading';
+const MINUTE_MS = 60_000;
+
+export type NewReadingTime =
+  /** `occurredAt` is the time to store; `adjusted` when it was moved to just after the latest reading. */
+  | { ok: true; occurredAt: Date; adjusted: boolean }
+  /** Earlier minute than the latest reading. */
+  | { ok: false; latestOccurredAt: string };
 
 /**
- * @param occurredAt       Date of the new reading.
+ * @param occurredAt       Requested date of the new reading.
  * @param latestOccurredAt `occurred_at` of the latest stored reading (ISO), or null if none.
- * @returns true when the new reading would be dated before the latest one.
  */
-export function isBeforeLatestReading(occurredAt: Date, latestOccurredAt: string | null | undefined): boolean {
-  if (!latestOccurredAt) return false;
+export function resolveNewReadingTime(occurredAt: Date, latestOccurredAt: string | null | undefined): NewReadingTime {
+  const unchanged = { ok: true, occurredAt, adjusted: false } as const;
+  if (!latestOccurredAt) return unchanged;
   const latest = Date.parse(latestOccurredAt);
-  if (Number.isNaN(latest)) return false;
-  return occurredAt.getTime() < latest;
-}
+  if (Number.isNaN(latest)) return unchanged;
 
-/** Extracts the ISO timestamp appended to the server error, if present. */
-export function latestReadingFromError(message: string): string | null {
-  const match = /Latest reading: (\S+)/.exec(message);
-  return match && !Number.isNaN(Date.parse(match[1])) ? match[1] : null;
+  const time = occurredAt.getTime();
+  if (time > latest) return unchanged;
+  // Same minute as the latest reading (including the exact same instant): keep the new
+  // reading strictly after it. `Date.parse` drops microseconds, so +1 ms is still later.
+  if (time >= Math.floor(latest / MINUTE_MS) * MINUTE_MS) {
+    return { ok: true, occurredAt: new Date(latest + 1), adjusted: true };
+  }
+  return { ok: false, latestOccurredAt };
 }
 
 /** `occurred_at DESC, mileage_km DESC` — the reading the app treats as the latest by date. */

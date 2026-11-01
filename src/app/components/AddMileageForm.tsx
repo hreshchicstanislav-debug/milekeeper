@@ -12,7 +12,8 @@ import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
 import { previewEntryGain } from '@/lib/mileage/mileageGain';
-import { isBeforeLatestReading, latestReadingFromError, READING_BEFORE_LATEST_ERROR } from '@/lib/mileage/readingChronology';
+import { resolveNewReadingTime } from '@/lib/mileage/readingChronology';
+import { addMileageErrorText } from '@/lib/mileage/addMileageMessages';
 
 interface AddMileageFormProps {
   buttonLabel?: string;
@@ -24,8 +25,6 @@ interface AddMileageFormProps {
 
 export default function AddMileageForm({ buttonLabel, lastMileageKm = null, latestReadingAt = null }: AddMileageFormProps = {}) {
   const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
-  const dateBeforeLatestMessage = (latestIso: string) =>
-    RU.mileageForm.errorDateBeforeLatest.replace('{date}', displayDateTime(new Date(latestIso)));
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
@@ -98,19 +97,26 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null, late
       submissionOccurredAt = new Date();
     }
 
-    // Explain the chronology rule before sending; the server enforces it as well.
-    if (isBeforeLatestReading(submissionOccurredAt, latestReadingAt)) {
-      setError(dateBeforeLatestMessage(latestReadingAt!));
+    // Explain the chronology rule before sending; the server enforces it as well (with the
+    // freshest latest reading, and stores a same-minute time just after that reading).
+    const readingTime = resolveNewReadingTime(submissionOccurredAt, latestReadingAt);
+    if (!readingTime.ok) {
+      setError(addMileageErrorText({ RU, displayDateTime }, { reason: 'date-before-latest', latestOccurredAt: readingTime.latestOccurredAt }));
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const insertedEntry = await addOdometerEntry({
+      const result = await addOdometerEntry({
         occurredAt: submissionOccurredAt,
         mileageKm: mileage,
         note: note ? trimWhitespace(note) : null,
       });
+      if (!result.ok) {
+        setError(addMileageErrorText({ RU, displayDateTime }, result));
+        return;
+      }
+      const insertedEntry = result.entry;
 
       // In TEST mode: advance AppNow to keep timeline monotonic and avoid duplicate timestamps
       // This ensures (a) new entry is never 'in the future' relative to AppNow,
@@ -141,16 +147,9 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null, late
       // revalidatePath('/'), so Next.js re-renders the current page and streams the
       // updated RSC payload back in the same response as the action result.
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : RU.mileageForm.errorFailedToAdd;
-      // Переводим известные ошибки с сервера
-      if (errorMessage.includes('Mileage must be greater')) {
-        setError(RU.mileageForm.errorMileageMustBeGreater);
-      } else if (errorMessage.includes(READING_BEFORE_LATEST_ERROR)) {
-        const latestIso = latestReadingFromError(errorMessage) ?? latestReadingAt;
-        setError(latestIso ? dateBeforeLatestMessage(latestIso) : errorMessage);
-      } else {
-        setError(errorMessage);
-      }
+      // Unexpected failure (session, database, network): never show server details.
+      console.error('Failed to add odometer entry', err);
+      setError(addMileageErrorText({ RU, displayDateTime }, { reason: 'unexpected' }));
     } finally {
       setIsSubmitting(false);
     }
