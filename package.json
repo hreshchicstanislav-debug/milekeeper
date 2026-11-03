@@ -35,7 +35,7 @@
   "description": "Car mileage and maintenance tracker built with Next.js and Supabase",
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
-    "next": "^16.3.8",
+    "next": "^16.4.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
@@ -45,7 +45,7 @@
     "@types/react-dom": "19.2.3",
     "@types/react-test-renderer": "19.1.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.3",
     "react-test-renderer": "19.2.3",
     "typescript": "5.9.3",
     "vitest": "^1.0.0"
