@@ -14,6 +14,7 @@ import { useSwipeToClose } from './useSwipeToClose';
 import { previewEntryGain } from '@/lib/mileage/mileageGain';
 import { resolveNewReadingTime } from '@/lib/mileage/readingChronology';
 import { addMileageErrorText } from '@/lib/mileage/addMileageMessages';
+import type { OdometerEntry } from '@/lib/db/types';
 
 interface AddMileageFormProps {
   buttonLabel?: string;
@@ -21,11 +22,31 @@ interface AddMileageFormProps {
   lastMileageKm?: number | null;
   /** `occurred_at` of the latest reading by date: new readings may not be dated earlier. */
   latestReadingAt?: string | null;
+  /**
+   * Controlled mode, without the trigger button: another form opens this one (e.g. the
+   * service record form's "Update odometer"). The reading is still saved separately.
+   */
+  open?: boolean;
+  /** Prefilled reading when opened in controlled mode. */
+  initialMileageKm?: number | null;
+  onClose?: () => void;
+  /** Called with the saved reading before the form closes. */
+  onSaved?: (entry: OdometerEntry) => void;
+  returnFocusSelector?: string;
 }
 
-export default function AddMileageForm({ buttonLabel, lastMileageKm = null, latestReadingAt = null }: AddMileageFormProps = {}) {
+export default function AddMileageForm({
+  buttonLabel, lastMileageKm = null, latestReadingAt = null,
+  open, initialMileageKm = null, onClose, onSaved, returnFocusSelector = '[data-add-mileage-trigger]',
+}: AddMileageFormProps = {}) {
   const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
-  const [isOpen, setIsOpen] = useState(false);
+  const controlled = open !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = controlled ? open : internalOpen;
+  const setIsOpen = (next: boolean) => {
+    if (!controlled) setInternalOpen(next);
+    else if (!next) onClose?.();
+  };
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
   const [occurredAt, setOccurredAt] = useState(toDateTimeLocalValue(new Date()));
@@ -63,6 +84,14 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null, late
       
       return () => clearInterval(interval);
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && controlled && initialMileageKm) {
+      setMileageKm(formatMileageInput(String(initialMileageKm)));
+    }
+    // Only when the controlled form opens; later prop changes must not overwrite input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
@@ -141,6 +170,7 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null, late
       }
       setShowDate(false);
       setShowNote(false);
+      onSaved?.(insertedEntry);
       setIsOpen(false);
 
       // No manual refresh here: addOdometerEntry() is a server action that calls
@@ -172,16 +202,18 @@ export default function AddMileageForm({ buttonLabel, lastMileageKm = null, late
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="add-mileage-button"
-        data-add-mileage-trigger
-      >
-        {buttonLabel ?? RU.home.addMileage}
-      </button>
+      {!controlled && (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="add-mileage-button"
+          data-add-mileage-trigger
+        >
+          {buttonLabel ?? RU.home.addMileage}
+        </button>
+      )}
       {isOpen && (
-    <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector="[data-add-mileage-trigger]">
+    <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector={returnFocusSelector}>
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
           {/* Grabber bar - iOS style */}

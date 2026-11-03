@@ -2607,8 +2607,10 @@ p {
 
 .item-history-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-1, 0.25rem);
+  min-width: 0;
   font-size: var(--text-caption, 0.875rem);
   font-weight: var(--fw-regular, 400);
   line-height: var(--lh-relaxed, 1.5);
@@ -2631,12 +2633,173 @@ p {
   color: rgba(0, 0, 0, 0.85);
 }
 
-/* Mileage since the previous replacement: its own line under date and mileage */
-.item-history-row {
-  flex-wrap: wrap;
-  column-gap: var(--sp-3, 0.75rem);
+/* One line: kind, date, mileage, volume, delete action; details below it */
+.item-history-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2, 0.5rem);
+  min-width: 0;
 }
 
+.item-history-meta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1, 0.25rem) var(--sp-3, 0.75rem);
+  min-width: 0;
+  min-height: 40px;
+}
+
+.item-history-kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-small, 0.8125rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.item-history-kind-replacement {
+  background: rgba(0, 122, 255, 0.12);
+  color: #0a58ca;
+}
+
+.item-history-kind-check {
+  background: rgba(52, 199, 89, 0.14);
+  color: #1f7a35;
+}
+
+.item-history-kind-top_up {
+  background: rgba(255, 149, 0, 0.16);
+  color: #8a4b00;
+}
+
+.item-history-volume {
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.item-history-delete {
+  flex-shrink: 0;
+  margin: 0 calc(-1 * var(--sp-2, 0.5rem)) 0 0;
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.item-history-delete:hover:not(:disabled),
+.item-history-delete[aria-expanded="true"] {
+  background: rgba(220, 38, 38, 0.08);
+  color: rgb(185, 28, 28);
+}
+
+.item-history-delete:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 1px;
+}
+
+.item-history-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.item-history-note {
+  margin: 0;
+  font-size: var(--text-small, 0.8125rem);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.7);
+  white-space: pre-wrap;
+}
+
+.item-history-confirm {
+  margin-top: var(--sp-2, 0.5rem);
+  padding-top: var(--sp-3, 0.75rem);
+  border-top: 1px solid var(--divider, rgba(0, 0, 0, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.item-history-confirm p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-history-confirm-title {
+  font-weight: var(--fw-semibold, 600);
+}
+
+.item-history-confirm-text {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.item-history-confirm-warning {
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+  border-radius: 8px;
+  background: rgba(255, 149, 0, 0.12);
+  color: #7a4300;
+}
+
+.item-history-confirm-error {
+  color: #c33;
+}
+
+.item-history-confirm-actions {
+  display: flex;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.item-history-confirm-actions > button {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+}
+
+.item-history-confirm-delete {
+  min-height: var(--control-height-sm, 44px);
+  padding: 0 var(--control-padding-x, 16px);
+  border: none;
+  border-radius: var(--control-radius, 12px);
+  background: rgb(220, 38, 38);
+  color: #fff;
+  font-weight: var(--control-font-weight, 600);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.item-history-confirm-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.item-history-more {
+  margin-top: var(--sp-3, 0.75rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.item-history-more-button {
+  width: 100%;
+}
+
+.item-history-more-error {
+  padding: 0;
+}
+
+/* Mileage since the previous replacement: its own line under date and mileage */
 .item-history-interval {
   flex-basis: 100%;
   font-size: var(--text-small, 0.8125rem);
@@ -2663,6 +2826,104 @@ p {
 /* Reserve the line so the sheet does not jump while typing */
 .mileage-gain-preview {
   min-height: 1.35em;
+}
+
+/* Service record form: choose the kind first (nothing preselected) */
+.service-event-kinds {
+  border: none;
+  margin: 0 0 var(--sp-5, 1.5rem);
+  padding: 0;
+  min-width: 0;
+}
+
+.service-event-kinds-legend {
+  padding: 0;
+  margin-bottom: var(--sp-2, 0.5rem);
+  font-size: var(--text-caption, 0.875rem);
+  font-weight: var(--fw-semibold, 600);
+  color: #1a1a1a;
+}
+
+.service-event-kind-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-2, 0.5rem);
+}
+
+.service-event-kind {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.service-event-kind input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.service-event-kind-title {
+  font-size: var(--text-body, 1rem);
+  font-weight: var(--fw-semibold, 600);
+  line-height: var(--lh-normal, 1.35);
+  color: #1a1a1a;
+}
+
+.service-event-kind-hint {
+  font-size: var(--text-small, 0.8125rem);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.service-event-kind:has(input:focus-visible) {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+}
+
+.service-event-kind.is-selected {
+  border-color: #007aff;
+  background: rgba(0, 122, 255, 0.08);
+}
+
+/* After the choice: a compact segmented control to switch the kind */
+.service-event-kinds.is-chosen .service-event-kind-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1, 0.25rem);
+}
+
+.service-event-kinds.is-chosen .service-event-kind {
+  min-height: 44px;
+  padding: var(--sp-2, 0.5rem) var(--sp-1, 0.25rem);
+  align-items: center;
+  text-align: center;
+}
+
+.service-event-kinds.is-chosen .service-event-kind-title {
+  font-size: var(--text-caption, 0.875rem);
+  overflow-wrap: anywhere;
+}
+
+.service-event-kinds.is-chosen .service-event-kind-hint {
+  display: none;
+}
+
+.service-event-odometer-error p {
+  margin: 0 0 var(--sp-2, 0.5rem);
+}
+
+.service-event-update-odometer {
+  width: 100%;
 }
 
 /* Sticky footer with actions - always accessible */
@@ -2813,12 +3074,6 @@ p {
   color: #c33;
 }
 
-.item-history-hint {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.5);
-  text-align: center;
-}
 
 /* Delete item button in edit form */
 .delete-item-button {

@@ -88,9 +88,12 @@ let browser, app, fixture;
     await page.goto(home(locale));
     await page.locator('.getting-started[data-step="replacement"]').waitFor();
     await page.getByRole('link', { name: en ? 'Record last replacement' : 'Указать последнюю замену', exact: true }).click();
-    await page.getByRole('button', { name: en ? 'Record replacement' : 'Отметить замену', exact: true }).click();
+    await page.getByRole('button', { name: en ? 'Add record' : 'Добавить запись', exact: true }).click();
+    // Nothing is preselected: the user chooses the kind first.
+    assert.equal(await dialog.getByRole('radio', { checked: true }).count(), 0, 'Preselected record kind');
+    await dialog.getByRole('radio', { name: en ? /^Replacement/ : /^Замена/ }).check();
     await dialog.getByPlaceholder(en ? 'Enter odometer reading' : 'Введите пробег').fill('115000');
-    await dialog.getByRole('button', { name: en ? 'Save' : 'Сохранить', exact: true }).click();
+    await dialog.getByRole('button', { name: en ? 'Save replacement' : 'Сохранить замену', exact: true }).click();
     await dialog.waitFor({ state: 'detached' });
     await page.goto(home(locale)); await page.locator('.getting-started[data-step="history"]').waitFor();
     assert(requests.some(r => r.path.startsWith('/rest/v1/service_events') && r.method === 'POST'));
@@ -108,14 +111,14 @@ let browser, app, fixture;
     await page.waitForURL(home(locale)); await page.locator('.getting-started[data-step="history"]').waitFor();
     const authValues = cookies => cookies.map(c => [c.name, c.value]).sort();
     assert.deepEqual(authValues((await context.cookies()).filter(c => ['mk_sb_at', 'mk_sb_rt'].includes(c.name))), authValues(cookiesBefore));
-    fixture.setScenario('ready'); await page.goto(home(locale)); await page.locator('.mileage-date').waitFor();
+    fixture.setScenario('ready'); await page.goto(home(locale)); await page.locator('.mileage-date:not(.mileage-gain)').waitFor();
     assert.equal(await page.locator('.getting-started').count(), 0, 'Ready account onboarding');
     for (const table of ['odometer_entries', 'service_items', 'service_events']) {
       expectedLoadError = true; fixture.setScenario('error-' + table); await page.goto(home(locale));
       await page.locator('.page-content[role="alert"]').waitFor();
       assert.equal(await page.locator('.getting-started').count(), 0, 'Error rendered empty-account guidance');
       fixture.setScenario('ready'); await page.reload();
-      await page.locator('.mileage-date').waitFor(); expectedLoadError = false;
+      await page.locator('.mileage-date:not(.mileage-gain)').waitFor(); expectedLoadError = false;
     }
     // Sign out for next locale's mocked Google flow.
     await context.clearCookies(); await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });

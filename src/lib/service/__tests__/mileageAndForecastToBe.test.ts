@@ -25,6 +25,8 @@ function serviceEvent(occurredAt: Date, mileageKm: number): ServiceEvent {
     mileage_km: mileageKm,
     note: null,
     created_at: iso,
+    kind: 'replacement',
+    amount_liters: null,
   };
 }
 

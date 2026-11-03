@@ -16,7 +16,7 @@ npm run build                  # production build
 npm run test:db-security       # disposable local PostgreSQL; never connects to Supabase
 ```
 
-The database tests need PostgreSQL binaries (`initdb`, `pg_ctl`, `psql`); set `PG_BIN=/path/to/postgresql/bin` if they are not found. They create and remove their own socket-only cluster. More on the database setup: [`supabase/README.md`](../supabase/README.md).
+The database tests need PostgreSQL binaries (`initdb`, `pg_ctl`, `psql`); set `PG_BIN=/path/to/postgresql/bin` if they are not found. On macOS run them with `LC_ALL=en_US.UTF-8` if `postmaster became multithreaded during startup` appears. They create and remove their own socket-only cluster. More on the database setup: [`supabase/README.md`](../supabase/README.md).
 
 ### Browser regression scripts
 
@@ -29,6 +29,7 @@ npm run test:demo:hydration
 npm run test:auth-recovery:browser
 npm run test:i18n:browser
 npm run test:onboarding:browser
+npm run test:service-records:browser   # replacement / check / top-up, paging, delete
 ```
 
 Run them one at a time: they share ports 3101 and 54329.
@@ -49,7 +50,7 @@ npm run build                  # production-сборка
 npm run test:db-security       # временный локальный PostgreSQL; к Supabase не подключается
 ```
 
-Тестам БД нужны бинарные файлы PostgreSQL (`initdb`, `pg_ctl`, `psql`); если они не найдены, задайте `PG_BIN=/path/to/postgresql/bin`. Скрипт сам создаёт и удаляет кластер, доступный только через Unix-сокет. Подробнее о подготовке БД — в [`supabase/README.md`](../supabase/README.md).
+Тестам БД нужны бинарные файлы PostgreSQL (`initdb`, `pg_ctl`, `psql`); если они не найдены, задайте `PG_BIN=/path/to/postgresql/bin`. Если на macOS появляется `postmaster became multithreaded during startup`, запускайте с `LC_ALL=en_US.UTF-8`. Скрипт сам создаёт и удаляет кластер, доступный только через Unix-сокет. Подробнее о подготовке БД — в [`supabase/README.md`](../supabase/README.md).
 
 ### Браузерные регрессионные сценарии
 
@@ -62,6 +63,7 @@ npm run test:demo:hydration
 npm run test:auth-recovery:browser
 npm run test:i18n:browser
 npm run test:onboarding:browser
+npm run test:service-records:browser   # замена / проверка / долив, страницы, удаление
 ```
 
 Запускайте их по одному: они используют общие порты 3101 и 54329.

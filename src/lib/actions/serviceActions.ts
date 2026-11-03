@@ -16,6 +16,13 @@ import type {
   ServiceEvent,
   ServiceEventInput,
 } from '../db/types';
+import {
+  isReplacementEvent,
+  isServiceEventKind,
+  isValidAmountLiters,
+  SERVICE_EVENT_NOTE_MAX_LENGTH,
+} from '../service/serviceEventKinds';
+import { UUID_PATTERN } from '../service/historyPage';
 
 /**
  * List active service items, ordered by title ascending
@@ -334,21 +341,72 @@ export async function deleteServiceItem(id: string): Promise<{ success: boolean 
 }
 
 /**
- * Add a new service event
- * @param input Service event data
- * @returns The inserted service event
- * @throws Error if mileageKm is missing or greater than latest odometer entry
+ * Expected outcomes of `addServiceEvent`. Rejections are returned as values, not thrown:
+ * Next.js replaces the message of an error thrown from a Server Action with a generic
+ * one in production, so the form could not explain the rejection otherwise.
+ * Unexpected failures (session, database) still throw a generic error without details.
+ */
+export type AddServiceEventResult =
+  | { ok: true; event: ServiceEvent }
+  /** Malformed kind, date, mileage or comment. */
+  | { ok: false; reason: 'invalid-input' }
+  /** Volume given for a kind other than top-up, or outside 0 < value <= 99.99 (2 decimals). */
+  | { ok: false; reason: 'invalid-amount' }
+  | { ok: false; reason: 'item-unavailable' }
+  | { ok: false; reason: 'no-odometer' }
+  /**
+   * Mileage is above the latest recorded odometer reading. The record is not saved; the
+   * odometer has to be updated first (a separate operation).
+   */
+  | { ok: false; reason: 'mileage-above-odometer'; odometerKm: number; odometerAt: string };
+
+export type AddServiceEventRejection = Extract<AddServiceEventResult, { ok: false }>;
+
+/** Message of the DB trigger `milekeeper_enforce_service_event_mileage_not_future`. */
+const DB_SERVICE_MILEAGE_TRIGGER_ERROR = 'не может быть больше текущего пробега';
+
+function revalidateServiceData() {
+  // Use 'max' revalidation type for aggressive cache clearing on Vercel
+  revalidateTag(TAGS.serviceEvents, 'max');
+  revalidateTag(TAGS.serviceItems, 'max');
+  revalidateTag(TAGS.home, 'max');
+  revalidateTag(TAGS.items, 'max');
+  revalidateTag(TAGS.odometer, 'max'); // Forecasts combine service events with odometer data
+
+  // Also revalidate paths so the current route re-renders with the action result
+  revalidatePath('/', 'page');
+  revalidatePath('/', 'layout');
+  revalidatePath('/items', 'page');
+  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
+}
+
+/**
+ * Record a replacement, check or top-up for one of the current user's items.
+ *
+ * Never writes the odometer: the mileage must not exceed the latest recorded reading,
+ * otherwise the user updates the odometer separately and saves again.
+ * Only `kind = 'replacement'` starts a new interval (see `listLastServiceEventsForItems`).
  */
 export async function addServiceEvent(
   input: ServiceEventInput
-): Promise<ServiceEvent> {
-  // Require mileageKm (auto-prognosis will be added later)
-  if (input.mileageKm === undefined || input.mileageKm === null) {
-    throw new Error('Mileage required');
+): Promise<AddServiceEventResult> {
+  const note = typeof input?.note === 'string' ? input.note.trim() : input?.note ?? null;
+  if (
+    !input || typeof input.serviceItemId !== 'string' || !UUID_PATTERN.test(input.serviceItemId) ||
+    !isServiceEventKind(input.kind) ||
+    !(input.occurredAt instanceof Date) || Number.isNaN(input.occurredAt.getTime()) ||
+    typeof input.mileageKm !== 'number' || !Number.isInteger(input.mileageKm) || input.mileageKm <= 0 ||
+    (note !== null && (typeof note !== 'string' || note.length > SERVICE_EVENT_NOTE_MAX_LENGTH))
+  ) {
+    return { ok: false, reason: 'invalid-input' };
   }
-  
+  const amountLiters = input.amountLiters ?? null;
+  if (amountLiters !== null && (input.kind !== 'top_up' || !isValidAmountLiters(amountLiters))) {
+    return { ok: false, reason: 'invalid-amount' };
+  }
+
   const { supabase, userId } = await getRlsClientAndUserId();
-  
+
   // Reject unavailable items before inserting. The composite database FK is
   // the final guarantee, including when an item changes after this lookup.
   const { data: item, error: itemError } = await supabase
@@ -359,107 +417,106 @@ export async function addServiceEvent(
     .maybeSingle();
 
   if (itemError) {
-    throw new Error('Не удалось проверить элемент обслуживания');
+    console.error('[addServiceEvent] Item lookup failed:', itemError);
+    throw new Error('Не удалось сохранить запись');
   }
   if (!item) {
-    throw new Error('Элемент обслуживания не найден или недоступен');
+    return { ok: false, reason: 'item-unavailable' };
   }
 
-  // Fetch max mileage entry to validate mileage (matches what's shown on home page)
+  // Latest recorded odometer reading (the maximum, as shown in the form and on Home)
   const maxMileageEntry = await getMaxMileageEntry('AddServiceEvent');
-  
   if (maxMileageEntry === null) {
-    throw new Error('Сначала добавьте пробег (одометр)');
+    return { ok: false, reason: 'no-odometer' };
   }
-  
-  // Validate that service event mileage does not exceed current max odometer mileage
   if (input.mileageKm > maxMileageEntry.mileage_km) {
-    throw new Error(
-      `Пробег замены не может быть больше текущего пробега. ` +
-      `Текущий пробег: ${maxMileageEntry.mileage_km} км, указано: ${input.mileageKm} км`
-    );
+    return {
+      ok: false, reason: 'mileage-above-odometer',
+      odometerKm: maxMileageEntry.mileage_km, odometerAt: maxMileageEntry.occurred_at,
+    };
   }
-  
-  // Insert the service event
+
   const { data, error } = await supabase
     .from('service_events')
     .insert({
       user_id: userId,
       service_item_id: input.serviceItemId,
+      kind: input.kind,
       occurred_at: input.occurredAt.toISOString(),
       mileage_km: input.mileageKm,
-      note: input.note || null,
+      amount_liters: input.kind === 'top_up' ? amountLiters : null,
+      note: note || null,
     })
     .select()
     .single();
-  
+
   if (error) {
-    throw new Error(`Failed to add service event: ${error.message}`);
+    // A reading deleted concurrently (another tab or device) can still trip the DB trigger.
+    if (error.message?.includes(DB_SERVICE_MILEAGE_TRIGGER_ERROR)) {
+      const latest = await getMaxMileageEntry('AddServiceEvent:retry');
+      if (latest === null) return { ok: false, reason: 'no-odometer' };
+      return { ok: false, reason: 'mileage-above-odometer', odometerKm: latest.mileage_km, odometerAt: latest.occurred_at };
+    }
+    // FK violation: the item was deleted or changed owner after the lookup above.
+    if (error.code === '23503') {
+      return { ok: false, reason: 'item-unavailable' };
+    }
+    console.error('[addServiceEvent] Insert failed:', error);
+    throw new Error('Не удалось сохранить запись');
   }
-  
+
   if (!data) {
-    throw new Error('Failed to add service event: No data returned');
+    throw new Error('Не удалось сохранить запись');
   }
-  
-  // Invalidate cache tags after successful creation
-  // Use 'max' revalidation type for aggressive cache clearing on Vercel
-  revalidateTag(TAGS.serviceEvents, 'max');
-  revalidateTag(TAGS.serviceItems, 'max'); // Also invalidate items cache
-  revalidateTag(TAGS.home, 'max');
-  revalidateTag(TAGS.items, 'max');
-  revalidateTag(TAGS.odometer, 'max'); // Service events depend on odometer data
-  
-  // Also revalidate paths to ensure immediate UI update
-  // Revalidate all relevant paths to clear Next.js page cache
-  revalidatePath('/', 'page');
-  revalidatePath('/', 'layout');
-  revalidatePath('/items', 'page');
-  revalidatePath('/items', 'layout'); // This invalidates all /items/* dynamic routes
-  
-  return data;
+
+  revalidateServiceData();
+  return { ok: true, event: data };
 }
 
+export type DeleteServiceEventResult =
+  | { ok: true; deleted: Pick<ServiceEvent, 'id' | 'kind' | 'service_item_id'> }
+  | { ok: false; reason: 'invalid-input' }
+  /** Missing, already deleted, or owned by another user (indistinguishable on purpose). */
+  | { ok: false; reason: 'not-found' };
+
 /**
- * List service events for a specific service item, ordered by occurred_at descending
- * @param serviceItemId Service item ID
- * @returns Array of service events
+ * Delete one erroneous history record of the current user.
+ *
+ * The last replacement, forecasts and intervals are always derived from the remaining
+ * records, so they are recomputed on the next render. The odometer is not touched.
  */
-export async function listServiceEventsByItem(
-  serviceItemId: string
-): Promise<ServiceEvent[]> {
+export async function deleteServiceEvent(eventId: string): Promise<DeleteServiceEventResult> {
+  if (typeof eventId !== 'string' || !UUID_PATTERN.test(eventId)) {
+    return { ok: false, reason: 'invalid-input' };
+  }
+
   const { supabase, userId } = await getRlsClientAndUserId();
-  
+
+  // Explicit owner filter; RLS (`service_events_delete_own`) enforces it again.
   const { data, error } = await supabase
     .from('service_events')
-    .select('*')
-    .eq('service_item_id', serviceItemId)
+    .delete()
+    .eq('id', eventId)
     .eq('user_id', userId)
-    .order('occurred_at', { ascending: false });
-  
+    .select('id, kind, service_item_id');
+
   if (error) {
-    throw new Error(`Failed to list service events: ${error.message}`);
+    console.error('[deleteServiceEvent] Delete failed:', error);
+    throw new Error('Не удалось удалить запись');
   }
-  
-  return data || [];
+  const deleted = data?.[0];
+  if (!deleted) {
+    return { ok: false, reason: 'not-found' };
+  }
+
+  revalidateServiceData();
+  return { ok: true, deleted };
 }
 
 /**
- * Get the last service event for a specific service item
- * @param serviceItemId Service item ID
- * @returns Last service event or null if none exist
- */
-export async function getLastServiceEventByItem(
-  serviceItemId: string
-): Promise<ServiceEvent | null> {
-  const events = await listServiceEventsByItem(serviceItemId);
-  return events.length > 0 ? events[0] : null;
-}
-
-/**
- * Get the last service event for multiple service items in a single SQL query
- * Uses DISTINCT ON to get only the latest event per service_item_id
+ * Last *replacement* per service item (checks and top-ups are ignored).
  * @param itemIds Array of service item IDs
- * @returns Map of service_item_id to last service event (or null if none exists)
+ * @returns Map of service_item_id to the last replacement (or null if none exists)
  */
 async function _listLastServiceEventsForItems(
   itemIds: string[]
@@ -470,15 +527,18 @@ async function _listLastServiceEventsForItems(
 
   const { supabase, userId } = await getRlsClientAndUserId();
 
-  // User-scoped query under RLS (avoid RPC until it's updated for user_id)
+  // User-scoped query under RLS. Only replacements start an interval: a later check or
+  // top-up must never become the "last service" that forecasts are computed from.
   const { data: allEvents, error: fetchError } = await supabase
     .from('service_events')
     .select('*')
     .eq('user_id', userId)
     .in('service_item_id', itemIds)
+    .eq('kind', 'replacement')
     .order('service_item_id', { ascending: true })
     .order('occurred_at', { ascending: false })
-    .order('mileage_km', { ascending: false });
+    .order('mileage_km', { ascending: false })
+    .order('id', { ascending: false });
 
   if (fetchError) {
     throw new Error(`Failed to list service events: ${fetchError.message}`);
@@ -502,7 +562,8 @@ function computeLastServiceEventsMap(
   itemIds: string[],
   allEvents: ServiceEvent[]
 ): Record<string, ServiceEvent | null> {
-  // Pure post-processing: take first event per service_item_id from DB-sorted list
+  // Pure post-processing: take first event per service_item_id from DB-sorted list.
+  // The kind check repeats the query filter so a non-replacement can never slip through.
   const result: Record<string, ServiceEvent | null> = {};
   for (const itemId of itemIds) {
     result[itemId] = null;
@@ -510,6 +571,7 @@ function computeLastServiceEventsMap(
 
   const seenItems = new Set<string>();
   for (const event of allEvents) {
+    if (!isReplacementEvent(event)) continue;
     if (!seenItems.has(event.service_item_id)) {
       result[event.service_item_id] = event;
       seenItems.add(event.service_item_id);

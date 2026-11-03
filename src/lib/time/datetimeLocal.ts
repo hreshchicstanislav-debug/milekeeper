@@ -76,3 +76,23 @@ export function fromDateTimeLocalValue(value: string): Date {
   return date;
 }
 
+
+/** `YYYY-MM-DD` of `date` in the browser's local timezone (value of `<input type="date">`). */
+export function toDateInputValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * Moment stored for a day picked in a date-only field: the current moment for today
+ * (records made the same day keep the order in which they were entered), local noon
+ * for any other day. Null for a malformed or non-existent date.
+ */
+export function occurredAtFromDateInput(value: string, now: Date): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return value === toDateInputValue(now) ? new Date(now) : date;
+}

@@ -63,20 +63,45 @@ def main():
                 stdout=subprocess.DEVNULL)
             migrations = sorted((ROOT / 'supabase/migrations').glob('*.sql'))
             # Apply the historical schema, then install representative existing
-            # records before testing the two new migrations. No production data.
-            new_names = {'restrict_keep_alive_access', 'enforce_service_event_owner'}
-            old = [m for m in migrations if not any(name in m.stem for name in new_names)]
-            new = [m for m in migrations if m not in old]
-            if len(new) != 2:
-                raise SystemExit('Expected the two stage-1 migrations.')
+            # records before each stage's migrations. No production data.
+            stage1_names = {'restrict_keep_alive_access', 'enforce_service_event_owner'}
+            stage2_names = {'add_service_event_kind'}
+            def stage(names):
+                return [m for m in migrations if any(name in m.stem for name in names)]
+            stage1, stage2 = stage(stage1_names), stage(stage2_names)
+            if len(stage1) != 2 or len(stage2) != 1:
+                raise SystemExit('Expected two stage-1 migrations and one stage-2 migration.')
+            old = [m for m in migrations if m not in stage1 and m not in stage2]
+            if any(m.name > stage1[0].name for m in old):
+                raise SystemExit('Unexpected migration after stage 1; register it with a test stage.')
+            new = stage1
             for migration in old:
                 run(psql + ['-f', str(migration)], stdout=subprocess.DEVNULL)
             run(psql + ['-f', str(ROOT / 'supabase/tests/fixtures/security_existing_data.sql')],
                 stdout=subprocess.DEVNULL)
-            for migration in new:
+            for migration in stage1:
                 print(f'Applying {migration.name}', flush=True)
                 run(psql + ['-f', str(migration)], stdout=subprocess.DEVNULL)
+            # Stage 2: more existing rows (a separate user), fingerprint, migrate.
+            run(psql + ['-f', str(ROOT / 'supabase/tests/fixtures/service_event_kinds_existing_data.sql')],
+                stdout=subprocess.DEVNULL)
+            for migration in stage2:
+                print(f'Applying {migration.name}', flush=True)
+                run(psql + ['-f', str(migration)], stdout=subprocess.DEVNULL)
+            # Stage-1 guarantees must still hold on the stage-2 schema.
             run(psql + ['-f', str(ROOT / 'supabase/tests/database_security.sql')])
+            run(psql + ['-f', str(ROOT / 'supabase/tests/service_event_kinds.sql')])
+
+            # Re-applying the stage-2 migration fails as a whole and changes nothing.
+            constraints = psql + ['-At', '-c', "SELECT string_agg(conname, ',' ORDER BY conname) "
+                                  "FROM pg_constraint WHERE conrelid = 'public.service_events'::regclass;"]
+            before = run(constraints, capture_output=True).stdout
+            repeated = subprocess.run(psql + ['-f', str(stage2[0])], env=env, text=True, capture_output=True)
+            if repeated.returncode == 0 or 'already exists' not in repeated.stderr:
+                raise SystemExit('Expected a repeated stage-2 migration to fail.')
+            if run(constraints, capture_output=True).stdout != before:
+                raise SystemExit('A failed stage-2 migration must not leave partial changes.')
+            print('PASS: repeated stage-2 migration fails atomically', flush=True)
 
             # A second isolated database verifies failure/rollback when historical
             # data violate the new FK. No automated repair or deletion is allowed.

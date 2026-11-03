@@ -3,207 +3,44 @@
 import { useCopy } from '@/lib/i18n/client';
 
 import ModalSheet from './ModalSheet';
+import AddMileageForm from './AddMileageForm';
 
 import { useState, useRef, useEffect } from 'react';
-import { addServiceEvent } from '@/lib/actions/serviceActions';
-import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
-import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
+import { addServiceEvent, type AddServiceEventRejection } from '@/lib/actions/serviceActions';
+import type { ServiceEventKind } from '@/lib/db/types';
+import { parseMileageInput } from '@/lib/utils/numberFormat';
+import { occurredAtFromDateInput, toDateInputValue } from '@/lib/time/datetimeLocal';
+import {
+  parseAmountLitersInput,
+  SERVICE_EVENT_KINDS,
+  SERVICE_EVENT_NOTE_MAX_LENGTH,
+} from '@/lib/service/serviceEventKinds';
 import { LocalDateTime } from './LocalDateTime';
-
-// Hook for swipe-to-close gesture
-function useSwipeToClose<T extends HTMLElement>(
-  elementRef: React.RefObject<T | null>,
-  onClose: () => void,
-  enabled: boolean = true
-) {
-  const startYRef = useRef<number | null>(null);
-  const currentYRef = useRef<number | null>(null);
-  const isDraggingRef = useRef(false);
-  const startTimeRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!enabled || !elementRef.current) return;
-
-    const element = elementRef.current;
-
-    const handleStart = (clientY: number) => {
-      startYRef.current = clientY;
-      currentYRef.current = clientY;
-      startTimeRef.current = Date.now();
-      isDraggingRef.current = true;
-      element.style.transition = 'none';
-    };
-
-    const handleMove = (clientY: number) => {
-      if (!isDraggingRef.current || startYRef.current === null) return;
-
-      const deltaY = clientY - startYRef.current;
-      
-      // Only allow downward swipes
-      if (deltaY > 0) {
-        currentYRef.current = clientY;
-        // Apply rubber-band effect: reduce movement for larger drags
-        const dragAmount = Math.min(deltaY, deltaY * 0.5 + 50);
-        element.style.transform = `translateY(${dragAmount}px)`;
-      }
-    };
-
-    const handleEnd = () => {
-      if (!isDraggingRef.current || startYRef.current === null || currentYRef.current === null || startTimeRef.current === null) {
-        isDraggingRef.current = false;
-        return;
-      }
-
-      const deltaY = currentYRef.current - startYRef.current;
-      const deltaTime = Date.now() - startTimeRef.current;
-      const velocity = Math.abs(deltaY / deltaTime); // px/ms
-
-      element.style.transition = 'transform 0.3s ease-out';
-
-      // Close if dragged > 80px or high velocity (> 0.5 px/ms)
-      if (deltaY > 80 || (deltaY > 30 && velocity > 0.5)) {
-        element.style.transform = 'translateY(100%)';
-        setTimeout(() => {
-          onClose();
-        }, 300);
-      } else {
-        // Snap back
-        element.style.transform = 'translateY(0)';
-      }
-
-      startYRef.current = null;
-      currentYRef.current = null;
-      startTimeRef.current = null;
-      isDraggingRef.current = false;
-    };
-
-    // Touch events
-    const handleTouchStart = (e: TouchEvent) => {
-      // Don't start swipe if user is interacting with scrollable content
-      const target = e.target as HTMLElement;
-      const scrollable = target.closest('.item-history, .form-content');
-      if (scrollable) {
-        // Only allow swipe if at the very top of scrollable content
-        if (scrollable.scrollTop > 5) {
-          return; // User is scrolling content, don't start swipe
-        }
-        // Check if content is actually scrollable
-        if (scrollable.scrollHeight > scrollable.clientHeight + 5) {
-          // Content is scrollable, only allow swipe from top
-          if (scrollable.scrollTop > 0) {
-            return;
-          }
-        }
-      }
-      handleStart(e.touches[0].clientY);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!isDraggingRef.current) return;
-      
-      // Only preventDefault if we're actually dragging the sheet
-      // Check if user is trying to scroll content instead
-      const target = e.target as HTMLElement;
-      const scrollable = target.closest('.item-history, .form-content');
-      if (scrollable && scrollable.scrollTop > 0) {
-        // User is scrolling content, cancel drag
-        isDraggingRef.current = false;
-        startYRef.current = null;
-        currentYRef.current = null;
-        element.style.transition = '';
-        element.style.transform = '';
-        return;
-      }
-      
-      e.preventDefault(); // Prevent scrolling only when dragging sheet
-      handleMove(e.touches[0].clientY);
-    };
-
-    const handleTouchEnd = () => {
-      handleEnd();
-    };
-
-    // Pointer events (for mouse support)
-    const handlePointerDown = (e: PointerEvent) => {
-      if (e.pointerType === 'mouse') return; // Only handle touch
-      const target = e.target as HTMLElement;
-      const scrollable = target.closest('.item-history, .form-content');
-      if (scrollable) {
-        // Only allow swipe if at the very top of scrollable content (within 2px tolerance)
-        if (scrollable.scrollTop > 2) {
-          return; // User is scrolling content, don't start swipe
-        }
-        // Check if content is actually scrollable
-        if (scrollable.scrollHeight > scrollable.clientHeight + 2) {
-          // Content is scrollable, only allow swipe from absolute top
-          if (scrollable.scrollTop > 0) {
-            return;
-          }
-        }
-      }
-      handleStart(e.clientY);
-    };
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!isDraggingRef.current || e.pointerType === 'mouse') return;
-      
-      // Check if user is trying to scroll content instead of dragging sheet
-      const target = e.target as HTMLElement;
-      const scrollable = target.closest('.item-history, .form-content');
-      
-      // If user is scrolling content (scrollTop > 0), cancel drag immediately
-      if (scrollable && scrollable.scrollTop > 0) {
-        // User is scrolling content, cancel drag and allow native scroll
-        isDraggingRef.current = false;
-        startYRef.current = null;
-        currentYRef.current = null;
-        startTimeRef.current = null;
-        element.style.transition = '';
-        element.style.transform = '';
-        return; // Don't preventDefault - allow native scroll
-      }
-      
-      // Only preventDefault when we're actually dragging the sheet (not scrolling content)
-      e.preventDefault();
-      handleMove(e.clientY);
-    };
-
-    const handlePointerUp = () => {
-      if (isDraggingRef.current) {
-        handleEnd();
-      }
-    };
-
-    element.addEventListener('touchstart', handleTouchStart, { passive: false });
-    element.addEventListener('touchmove', handleTouchMove, { passive: false });
-    element.addEventListener('touchend', handleTouchEnd);
-    element.addEventListener('pointerdown', handlePointerDown);
-    element.addEventListener('pointermove', handlePointerMove);
-    element.addEventListener('pointerup', handlePointerUp);
-
-    return () => {
-      element.removeEventListener('touchstart', handleTouchStart);
-      element.removeEventListener('touchmove', handleTouchMove);
-      element.removeEventListener('touchend', handleTouchEnd);
-      element.removeEventListener('pointerdown', handlePointerDown);
-      element.removeEventListener('pointermove', handlePointerMove);
-      element.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, [enabled, elementRef, onClose]);
-}
+import { useSwipeToClose } from './useSwipeToClose';
 
 interface AddServiceEventFormProps {
   serviceItemId: string;
   serviceItemTitle: string;
   /** Last actual odometer reading; prefilled into the field and shown as a hint. */
   defaultMileage?: number | null;
-  /** Date of that reading, if known. */
+  /** Date of that reading, shown next to it so an old value is not taken for current. */
   lastReadingAt?: string | null;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (kind: ServiceEventKind) => void;
 }
 
+type FormError =
+  | { type: 'text'; text: string }
+  /** The record is not saved; offer the separate odometer update. */
+  | { type: 'above-odometer'; enteredKm: number; odometerKm: number };
+
+interface Reading { km: number; at: string | null }
+
+/**
+ * One form for every kind of service record. The user first chooses what they did
+ * (nothing is preselected), then fills the fields of that kind.
+ */
 export default function AddServiceEventForm({
   serviceItemId,
   serviceItemTitle,
@@ -213,129 +50,158 @@ export default function AddServiceEventForm({
   onClose,
   onSuccess,
 }: AddServiceEventFormProps) {
-  const { formatMileageInput, formatNumber, RU, errorMessageText } = useCopy();
-  const [mileageKm, setMileageKm] = useState(
-    defaultMileage ? formatMileageInput(String(defaultMileage)) : ''
-  );
-  const [occurredAt, setOccurredAt] = useState(toDateTimeLocalValue(new Date()));
-  const [showDate, setShowDate] = useState(false);
-  const [showNote, setShowNote] = useState(false);
+  const { formatMileageInput, formatNumber, RU } = useCopy();
+  const copy = RU.items.serviceEvent;
+  const [kind, setKind] = useState<ServiceEventKind | null>(null);
+  const [date, setDate] = useState(() => toDateInputValue(new Date()));
+  const [mileageKm, setMileageKm] = useState('');
+  const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FormError | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const mileageInputRef = useRef<HTMLInputElement>(null);
-  const hasRefreshedRef = useRef(false); // Guard to prevent multiple refreshes
+  // Latest recorded reading known to this form: from props, or from an odometer update
+  // made from here (before the refreshed server data arrives).
+  const [lastReading, setLastReading] = useState<Reading | null>(null);
+  const [isOdometerOpen, setIsOdometerOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const messageRef = useRef<HTMLDivElement>(null);
 
-  // Swipe-to-close gesture
-  useSwipeToClose<HTMLFormElement>(formRef, onClose, isOpen);
-
+  // On a phone the form scrolls: bring a new message into view next to the fields.
   useEffect(() => {
-    if (isOpen) {
-      // Сбрасываем форму при открытии
-      setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
-      setNote('');
-      setOccurredAt(toDateTimeLocalValue(new Date()));
-      setShowDate(false);
-      setShowNote(false);
-      setError(null);
-      // Reset refresh guard when form opens
-      hasRefreshedRef.current = false;
-      // Фокус на поле пробега
-      setTimeout(() => mileageInputRef.current?.focus(), 100);
-    }
-  }, [isOpen, defaultMileage]);
+    if (error || notice) messageRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [error, notice]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useSwipeToClose<HTMLFormElement>(formRef, onClose, isOpen && !isOdometerOpen);
+
+  // Reset only when the form opens. A later props change (the odometer updated from this
+  // form refreshes the page) must keep what the user has entered.
+  useEffect(() => {
+    if (!isOpen) return;
+    setKind(null);
+    setDate(toDateInputValue(new Date()));
+    setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
+    setAmount('');
+    setNote('');
     setError(null);
-    setIsSubmitting(true);
+    setNotice(null);
+    setIsOdometerOpen(false);
+    setLastReading(defaultMileage ? { km: defaultMileage, at: lastReadingAt } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
-    const mileage = parseMileageInput(mileageKm);
-    
-    if (mileage === null || mileage <= 0) {
-      if (!mileageKm.trim()) {
-        setError(RU.items.serviceEvent.errorMileageRequired);
-      } else {
-        setError(RU.items.serviceEvent.errorMileageInvalid);
-      }
-      setIsSubmitting(false);
-      return;
-    }
+  // A newer reading from the server only moves the baseline forward.
+  useEffect(() => {
+    if (!isOpen || !defaultMileage) return;
+    setLastReading((current) => (current && current.km >= defaultMileage ? current : { km: defaultMileage, at: lastReadingAt }));
+  }, [isOpen, defaultMileage, lastReadingAt]);
 
-    try {
-      await addServiceEvent({
-        serviceItemId,
-        occurredAt: fromDateTimeLocalValue(occurredAt),
-        mileageKm: mileage,
-        note: note ? trimWhitespace(note) : null,
-      });
-
-      // Success: reset form
-      setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
-      setNote('');
-      setOccurredAt(toDateTimeLocalValue(new Date()));
-      setShowDate(false);
-      setShowNote(false);
-      
-      // Call onSuccess BEFORE closing (to ensure toast/close actions happen before unmount)
-      // Refresh only once after successful action (hasRefreshedRef guard prevents double refresh)
-      if (!hasRefreshedRef.current) {
-        hasRefreshedRef.current = true;
-        // addServiceEvent() is a server action that calls revalidatePath('/') and
-        // revalidatePath('/items', 'layout'), so Next.js already re-renders the current
-        // route and returns the fresh RSC payload together with the action result.
-        // onSuccess() only needs to handle client-owned state (toast, parent sheet,
-        // and the /api/service-events history list, which RSC does not cover).
-        if (onSuccess) {
-          onSuccess();
-        }
-      }
-      
-      // Close form after success callback
-      onClose();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : RU.items.serviceEvent.errorFailedToAdd;
-      // Переводим известные ошибки с сервера
-      if (errorMessage.includes('Service mileage cannot be less') || errorMessage.includes('less than latest odometer')) {
-        setError(RU.items.serviceEvent.errorMileageTooLow);
-      } else if (errorMessage.includes('Mileage required')) {
-        setError(RU.items.serviceEvent.errorMileageRequired);
-      } else {
-        setError(errorMessage);
-      }
-    } finally {
-      setIsSubmitting(false);
+  const rejectionError = (rejection: AddServiceEventRejection, enteredKm: number): FormError => {
+    switch (rejection.reason) {
+      case 'mileage-above-odometer':
+        return { type: 'above-odometer', enteredKm, odometerKm: rejection.odometerKm };
+      case 'invalid-amount':
+        return { type: 'text', text: copy.errorAmountInvalid };
+      case 'item-unavailable':
+        return { type: 'text', text: copy.errorItemUnavailable };
+      case 'no-odometer':
+        return { type: 'text', text: copy.errorNoOdometer };
+      default:
+        return { type: 'text', text: copy.errorFailedToAdd };
     }
   };
 
-  const handleCancel = () => {
-    setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
-    setNote('');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kind || isSubmitting) return;
     setError(null);
-    setShowDate(false);
-    setShowNote(false);
-    onClose();
+    setNotice(null);
+
+    const today = new Date();
+    const occurredAt = date ? occurredAtFromDateInput(date, today) : null;
+    if (!occurredAt) {
+      setError({ type: 'text', text: copy.errorDateRequired });
+      return;
+    }
+    if (date > toDateInputValue(today)) {
+      setError({ type: 'text', text: copy.errorDateInFuture });
+      return;
+    }
+    const mileage = parseMileageInput(mileageKm);
+    if (mileage === null || mileage <= 0) {
+      setError({ type: 'text', text: mileageKm.trim() ? copy.errorMileageInvalid : copy.errorMileageRequired });
+      return;
+    }
+    const amountInput = kind === 'top_up' ? parseAmountLitersInput(amount) : { ok: true as const, value: null };
+    if (!amountInput.ok) {
+      setError({ type: 'text', text: copy.errorAmountInvalid });
+      return;
+    }
+    const trimmedNote = note.trim();
+    if (trimmedNote.length > SERVICE_EVENT_NOTE_MAX_LENGTH) {
+      setError({ type: 'text', text: copy.errorNoteTooLong });
+      return;
+    }
+    // Explain the rule before sending; the server enforces it with the freshest reading.
+    if (lastReading && mileage > lastReading.km) {
+      setError({ type: 'above-odometer', enteredKm: mileage, odometerKm: lastReading.km });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await addServiceEvent({
+        serviceItemId,
+        kind,
+        occurredAt,
+        mileageKm: mileage,
+        amountLiters: amountInput.value,
+        note: trimmedNote || null,
+      });
+      if (!result.ok) {
+        if (result.reason === 'mileage-above-odometer') {
+          setLastReading({ km: result.odometerKm, at: result.odometerAt });
+        }
+        setError(rejectionError(result, mileage));
+        return;
+      }
+      // addServiceEvent() revalidates '/' and '/items', so the current route re-renders
+      // with the action result. onSuccess() handles client-owned state only (toast,
+      // the history list loaded from /api/service-events).
+      onSuccess?.(kind);
+      onClose();
+    } catch (err) {
+      // Unexpected failure (session, database, network): never show server details.
+      console.error('Failed to add service event', err);
+      setError({ type: 'text', text: copy.errorFailedToAdd });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isOpen) {
     return null;
   }
 
+  const enteredMileage = parseMileageInput(mileageKm);
+  const [readingBefore, readingAfter] = copy.lastReading.replace('{value}', lastReading ? formatNumber(lastReading.km) : '').split('{date}');
+
   return (
-    <ModalSheet label={RU.items.markReplacement} onClose={onClose} busy={isSubmitting}>
-      <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
+    <>
+    <ModalSheet label={`${copy.formTitle}: ${serviceItemTitle}`} onClose={onClose} busy={isSubmitting}>
+      <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form service-event-form" noValidate>
         <div className="form-header">
           {/* Grabber bar - iOS style */}
           <div className="sheet-grabber" />
-          
+
           <div className="form-header-content">
-            <h2>{RU.items.serviceEvent.formTitle}: {serviceItemTitle}</h2>
+            <h2>{copy.formTitle}: {serviceItemTitle}</h2>
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={onClose}
               className="close-button"
               aria-label={RU.common.close}
+              disabled={isSubmitting}
             >
               ×
             </button>
@@ -343,91 +209,156 @@ export default function AddServiceEventForm({
         </div>
 
         <div className="form-content">
-          {error && <div className="error-message">{errorMessageText(error)}</div>}
-
-          <div className="form-field">
-            <label htmlFor="serviceEventMileageKm">{RU.items.serviceEvent.mileageLabel}</label>
-            <input
-              ref={mileageInputRef}
-              id="serviceEventMileageKm"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9,\s]*"
-              value={formatMileageInput(mileageKm)}
-              onChange={(e) => setMileageKm(formatMileageInput(e.target.value))}
-              required
-              disabled={isSubmitting}
-              placeholder={RU.items.serviceEvent.mileagePlaceholder}
-              className="mileage-input"
-              aria-describedby={defaultMileage ? 'serviceEventLastReading' : undefined}
-            />
-            {defaultMileage ? (
-              <p id="serviceEventLastReading" className="form-field-hint" data-testid="service-event-last-reading">
-                {RU.items.serviceEvent.lastReading.replace('{value}', formatNumber(defaultMileage))}
-                {lastReadingAt && <> · <LocalDateTime iso={lastReadingAt} dateOnly fallback="" /></>}
+          <div ref={messageRef}>
+          {error?.type === 'text' && <div className="error-message" role="alert">{error.text}</div>}
+          {error?.type === 'above-odometer' && (
+            <div className="error-message service-event-odometer-error" role="alert" data-testid="service-event-above-odometer">
+              <p>
+                {copy.mileageAboveOdometer
+                  .replace('{entered}', formatNumber(error.enteredKm))
+                  .replace('{current}', formatNumber(error.odometerKm))}
               </p>
-            ) : null}
+              <button
+                type="button"
+                className="btn btn-secondary service-event-update-odometer"
+                onClick={() => setIsOdometerOpen(true)}
+                disabled={isSubmitting}
+              >
+                {copy.updateOdometer}
+              </button>
+            </div>
+          )}
+          {notice && <div className="success-message" role="status">{notice}</div>}
           </div>
 
-          <div className="form-field">
-            <button
-              type="button"
-              onClick={() => setShowDate(!showDate)}
-              className="toggle-button"
-            >
-              {showDate ? '✓' : '○'} {RU.items.serviceEvent.changeDate}
-            </button>
-            {showDate && (
-              <input
-                type="datetime-local"
-                value={occurredAt}
-                onChange={(e) => setOccurredAt(e.target.value)}
-                disabled={isSubmitting}
-                className="date-input"
-              />
-            )}
-          </div>
+          <fieldset className={`service-event-kinds${kind ? ' is-chosen' : ''}`} disabled={isSubmitting}>
+            <legend className="service-event-kinds-legend">{kind ? copy.kindLabel : copy.kindQuestion}</legend>
+            <div className="service-event-kind-options">
+              {SERVICE_EVENT_KINDS.map((option) => (
+                <label key={option} className={`service-event-kind${kind === option ? ' is-selected' : ''}`} data-kind={option}>
+                  <input
+                    type="radio"
+                    name="serviceEventKind"
+                    value={option}
+                    checked={kind === option}
+                    onChange={() => { setKind(option); setError(null); }}
+                  />
+                  <span className="service-event-kind-title">{copy.kinds[option]}</span>
+                  <span className="service-event-kind-hint">{copy.kindHints[option]}</span>
+                </label>
+              ))}
+            </div>
+            {kind && <p className="form-field-hint service-event-kind-effect" data-testid="service-event-kind-effect">{copy.kindEffect[kind]}</p>}
+          </fieldset>
 
-          <div className="form-field">
-            <button
-              type="button"
-              onClick={() => setShowNote(!showNote)}
-              className="toggle-button"
-            >
-              {showNote ? '✓' : '○'} {RU.items.serviceEvent.noteLabel}
-            </button>
-            {showNote && (
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                disabled={isSubmitting}
-                placeholder={RU.items.serviceEvent.notePlaceholder}
-                rows={3}
-                className="note-input"
-              />
-            )}
-          </div>
+          {kind && (
+            <>
+              <div className="form-field">
+                <label htmlFor="serviceEventDate">{copy.dateLabel}</label>
+                <input
+                  id="serviceEventDate"
+                  type="date"
+                  value={date}
+                  max={toDateInputValue(new Date())}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
+                  disabled={isSubmitting}
+                  className="date-input"
+                />
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="serviceEventMileageKm">{copy.mileageLabel}</label>
+                <input
+                  id="serviceEventMileageKm"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9,\s]*"
+                  value={formatMileageInput(mileageKm)}
+                  onChange={(e) => { setMileageKm(formatMileageInput(e.target.value)); if (error?.type === 'above-odometer') setError(null); }}
+                  required
+                  disabled={isSubmitting}
+                  placeholder={copy.mileagePlaceholder}
+                  className="mileage-input"
+                  aria-describedby={lastReading ? 'serviceEventLastReading' : undefined}
+                />
+                {lastReading ? (
+                  <p id="serviceEventLastReading" className="form-field-hint" data-testid="service-event-last-reading">
+                    {readingBefore}
+                    <LocalDateTime iso={lastReading.at} dateOnly fallback="—" />
+                    {readingAfter}
+                  </p>
+                ) : null}
+              </div>
+
+              {kind === 'top_up' && (
+                <div className="form-field">
+                  <label htmlFor="serviceEventAmount">{copy.amountLabel}</label>
+                  <input
+                    id="serviceEventAmount"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder={copy.amountPlaceholder}
+                    className="mileage-input"
+                  />
+                </div>
+              )}
+
+              <div className="form-field">
+                <label htmlFor="serviceEventNote">{copy.noteLabel}</label>
+                <textarea
+                  id="serviceEventNote"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder={copy.notePlaceholder}
+                  maxLength={SERVICE_EVENT_NOTE_MAX_LENGTH}
+                  rows={3}
+                  className="note-input"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="form-actions">
           <button
             type="button"
-            onClick={handleCancel}
+            onClick={onClose}
             disabled={isSubmitting}
             className="cancel-button"
           >
-            {RU.items.serviceEvent.cancel}
+            {copy.cancel}
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !mileageKm}
+            disabled={isSubmitting || !kind || !mileageKm}
             className="submit-button"
+            data-service-event-submit
           >
-            {isSubmitting ? RU.items.serviceEvent.saving : RU.items.serviceEvent.save}
+            {isSubmitting ? copy.saving : kind ? copy.save[kind] : RU.mileageForm.save}
           </button>
         </div>
       </form>
     </ModalSheet>
+    {/* The odometer update stays a separate operation; this form keeps its input meanwhile. */}
+    <AddMileageForm
+      open={isOdometerOpen}
+      initialMileageKm={enteredMileage}
+      lastMileageKm={lastReading?.km ?? null}
+      latestReadingAt={lastReading?.at ?? null}
+      returnFocusSelector="[data-service-event-submit]"
+      onClose={() => setIsOdometerOpen(false)}
+      onSaved={(entry) => {
+        setLastReading({ km: entry.mileage_km, at: entry.occurred_at });
+        setError(null);
+        setNotice(copy.odometerUpdated.replace('{value}', formatNumber(entry.mileage_km)));
+      }}
+    />
+    </>
   );
 }
-

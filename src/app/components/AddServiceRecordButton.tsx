@@ -2,21 +2,24 @@
 
 import { useCopy } from '@/lib/i18n/client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AddServiceEventForm from './AddServiceEventForm';
+import type { ServiceEventKind } from '@/lib/db/types';
 
-interface MarkReplacementButtonProps {
+interface AddServiceRecordButtonProps {
   serviceItemId: string;
   serviceItemTitle: string;
+  /** Last actual (manually entered) odometer reading, prefilled into the form. */
   defaultMileage?: number | null;
   /** Date of the actual reading behind `defaultMileage`, shown next to it in the form. */
   lastReadingAt?: string | null;
   disabled?: boolean;
   disabledHint?: string;
-  onSuccess?: () => void;
+  onSuccess?: (kind: ServiceEventKind) => void;
 }
 
-export default function MarkReplacementButton({
+/** "Add record": opens the service record form (replacement, check or top-up). */
+export default function AddServiceRecordButton({
   serviceItemId,
   serviceItemTitle,
   defaultMileage,
@@ -24,17 +27,9 @@ export default function MarkReplacementButton({
   disabled = false,
   disabledHint,
   onSuccess,
-}: MarkReplacementButtonProps) {
+}: AddServiceRecordButtonProps) {
   const { RU } = useCopy();
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [currentMileage, setCurrentMileage] = useState<number | null>(defaultMileage ?? null);
-
-  // Update currentMileage when defaultMileage prop changes (after server refresh)
-  useEffect(() => {
-    if (defaultMileage !== null && defaultMileage !== undefined) {
-      setCurrentMileage(defaultMileage);
-    }
-  }, [defaultMileage]);
 
   if (disabled) {
     return (
@@ -45,7 +40,7 @@ export default function MarkReplacementButton({
           className="mark-replacement-button disabled"
           title={disabledHint}
         >
-          {RU.items.markReplacement}
+          {RU.items.addRecord}
         </button>
         {disabledHint && (
           <p className="mark-replacement-hint">{disabledHint}</p>
@@ -54,27 +49,22 @@ export default function MarkReplacementButton({
     );
   }
 
-  const handleOpenForm = () => {
-    // Open immediately: `defaultMileage` is the actual (manually entered) odometer
-    // reading that the server component already resolved for this render, so there is
-    // nothing to wait for. The previous refresh-then-open dance cost two full server
-    // renders plus a 100ms timer before any UI appeared.
-    setIsFormOpen(true);
-  };
-
   return (
     <>
       <button
         type="button"
-        onClick={handleOpenForm}
+        // Opens immediately: `defaultMileage` is the actual odometer reading the server
+        // component already resolved for this render.
+        onClick={() => setIsFormOpen(true)}
         className="mark-replacement-button"
+        data-add-service-record
       >
-        {RU.items.markReplacement}
+        {RU.items.addRecord}
       </button>
       <AddServiceEventForm
         serviceItemId={serviceItemId}
         serviceItemTitle={serviceItemTitle}
-        defaultMileage={currentMileage ?? defaultMileage ?? null}
+        defaultMileage={defaultMileage ?? null}
         lastReadingAt={lastReadingAt}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
@@ -83,4 +73,3 @@ export default function MarkReplacementButton({
     </>
   );
 }
-

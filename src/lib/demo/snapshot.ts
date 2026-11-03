@@ -5,6 +5,7 @@ import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import { buildServiceItemStatusVM } from '@/lib/service/serviceItemStatusVM';
 import { sortByUrgency } from '@/lib/service/serviceItemUrgencySort';
 import { pickSoonMaintenanceItems } from '@/lib/home/soonMaintenance';
+import { findLastReplacement } from '@/lib/service/serviceEventKinds';
 
 /** Frozen example, evaluated only on the server. No AppNow, session or storage. */
 export const DEMO_DAY = '2026-10-09';
@@ -37,12 +38,16 @@ export function createDemoSnapshot() {
       measurement_mode: config.km === null ? 'calendar' : 'km', notify_before_days: 30,
       notify_before_km: null, is_active: true, note: null, created_at: at(-350),
     };
-    const events: ServiceEvent[] = config.offset === null ? [] : [{
-      id: `event-${config.id}`, user_id, service_item_id: config.id,
-      occurred_at: at(config.offset), mileage_km: config.mileage!, created_at: at(config.offset), note: null,
-    }];
-    if (config.id === 'oil') events.push({ id: 'older-oil', user_id, service_item_id: config.id, occurred_at: at(-350), mileage_km: 103000, created_at: at(-350), note: null });
-    const lastEvent = [...events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0] ?? null;
+    const record = (id: string, offset: number, mileage_km: number, kind: ServiceEvent['kind'] = 'replacement', amount_liters: number | null = null): ServiceEvent => ({
+      id, user_id, service_item_id: config.id, occurred_at: at(offset), mileage_km, created_at: at(offset), note: null, kind, amount_liters,
+    });
+    const events: ServiceEvent[] = config.offset === null ? [] : [record(`event-${config.id}`, config.offset, config.mileage!)];
+    if (config.id === 'oil') {
+      events.push(record('older-oil', -350, 103000));
+      // A top-up and a check after the last replacement never move the forecast.
+      events.push(record('oil-top-up', -60, 119800, 'top_up', 0.5), record('oil-check', -14, 121680, 'check'));
+    }
+    const lastEvent = findLastReplacement([...events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)));
     const status = calcServiceStatus({ serviceItem: item, lastEvent, latestOdometerMileageKm: odometer.estimatedKm, dailyKmRate: rate.dailyRate, now });
     const vm = buildServiceItemStatusVM(item, status, { ...item, dailyKmRate: rate.dailyRate });
     return { id: config.id, mode: item.measurement_mode, status, vm };

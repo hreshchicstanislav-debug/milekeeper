@@ -56,6 +56,12 @@ export interface ServiceItemUpdate {
 }
 
 // Service Event Types
+/**
+ * `replacement` starts a new maintenance interval. `check` and `top_up` are history
+ * records only and never affect the forecast (see `isReplacementEvent`).
+ */
+export type ServiceEventKind = 'replacement' | 'check' | 'top_up';
+
 export interface ServiceEvent {
   id: string;
   user_id: string;
@@ -64,12 +70,18 @@ export interface ServiceEvent {
   mileage_km: number;
   note: string | null;
   created_at: string; // ISO timestamp
+  kind: ServiceEventKind;
+  /** Optional volume of a top-up, litres. Always null for other kinds. */
+  amount_liters: number | null;
 }
 
 export interface ServiceEventInput {
   serviceItemId: string;
+  kind: ServiceEventKind;
   occurredAt: Date;
-  mileageKm?: number;
+  mileageKm: number;
+  /** Only for `top_up`; optional. */
+  amountLiters?: number | null;
   note?: string | null;
 }
 
