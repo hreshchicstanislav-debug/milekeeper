@@ -2631,6 +2631,40 @@ p {
   color: rgba(0, 0, 0, 0.85);
 }
 
+/* Mileage since the previous replacement: its own line under date and mileage */
+.item-history-row {
+  flex-wrap: wrap;
+  column-gap: var(--sp-3, 0.75rem);
+}
+
+.item-history-interval {
+  flex-basis: 100%;
+  font-size: var(--text-small, 0.8125rem);
+  line-height: var(--lh-normal, 1.35);
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.65);
+  overflow-wrap: anywhere;
+}
+
+.item-history-interval-muted {
+  color: rgba(0, 0, 0, 0.5);
+  font-style: italic;
+}
+
+/* Secondary line under a form input (live gain, last reading) */
+.form-field-hint {
+  margin: var(--sp-2, 0.5rem) 0 0;
+  font-size: var(--text-small, 0.8125rem);
+  line-height: var(--lh-normal, 1.35);
+  color: rgba(0, 0, 0, 0.65);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reserve the line so the sheet does not jump while typing */
+.mileage-gain-preview {
+  min-height: 1.35em;
+}
+
 /* Sticky footer with actions - always accessible */
 .item-details-actions {
   position: sticky;

@@ -20,6 +20,8 @@ import { time } from '@/lib/dev/timing';
 import { startRequestScope, formatProfilerSummary } from '@/lib/dev/dbProfiler';
 import Link from 'next/link';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
+import { latestMileageGain } from '@/lib/mileage/mileageGain';
+import { pickLatestReading } from '@/lib/mileage/readingChronology';
 
 // Force dynamic rendering to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
@@ -157,6 +159,8 @@ export default async function Home() {
   // This (not the raw last reading) is what every forecast below is based on, so that
   // maintenance estimates keep moving with time even without new manual input.
   const estimatedOdometer = computeEstimatedOdometer(maxMileageEntry, dailyRate, appNow);
+  // Gain between the two latest actual readings (never the estimate); hidden when ambiguous.
+  const lastGain = latestMileageGain(odometerEntries, maxMileageEntry);
   const currentMileage = estimatedOdometer.estimatedKm;
   
   // TO-BE: Single dailyRate is used for forecasting everywhere
@@ -538,6 +542,11 @@ export default async function Home() {
               <LocalDateTime iso={maxMileageEntry.occurred_at} />
             </div>
           )}
+          {lastGain.kind === 'gain' && (
+            <div className="mileage-date mileage-gain" data-testid="home-last-gain">
+              {RU.home.lastGain.replace('{value}', formatNumber(lastGain.km))}
+            </div>
+          )}
         </div>
 
         {/* TO-BE: Daily mileage rate hint (independent of Soon Maintenance block visibility) */}
@@ -557,7 +566,10 @@ export default async function Home() {
 
         {gettingStartedStep?.kind !== 'odometer' && (
           <div className="add-mileage-section">
-            <AddMileageForm />
+            <AddMileageForm
+              lastMileageKm={maxMileageEntry?.mileage_km ?? null}
+              latestReadingAt={pickLatestReading(odometerEntries)?.occurred_at ?? null}
+            />
           </div>
         )}
 

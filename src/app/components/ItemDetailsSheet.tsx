@@ -8,6 +8,8 @@ import { useState, useEffect, useRef } from 'react';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from './MarkReplacementButton';
+import ItemHistoryList from './ItemHistoryList';
+import { ITEM_HISTORY_FETCH_LIMIT } from '@/lib/service/replacementIntervals';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { useToast } from './ToastProvider';
@@ -235,7 +237,8 @@ export default function ItemDetailsSheet({
   useSwipeToClose<HTMLDivElement>(modalContentRef, onClose, true);
 
   const loadHistory = async (force = false) => {
-    const limit = 10;
+    // One record more than shown: it supplies the predecessor of the oldest visible row.
+    const limit = ITEM_HISTORY_FETCH_LIMIT;
     const key = `${item.id}:${limit}`;
 
     // Guard against fetch-loop: skip if already loaded (unless forced)
@@ -514,25 +517,7 @@ export default function ItemDetailsSheet({
                 {RU.items.historyEmpty}
               </div>
             ) : (
-              <>
-                <ul className="item-history-list">
-                  {history.map((event) => (
-                    <li key={event.id} className="item-history-row">
-                      <span className="item-history-date">
-                        <LocalDateTime iso={event.occurred_at} />
-                      </span>
-                      <span className="item-history-mileage">
-                        {formatNumber(event.mileage_km)} {RU.common.km}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {history.length >= 10 && (
-                  <div className="item-history-hint">
-                    {RU.items.showAllHistoryHint}
-                  </div>
-                )}
-              </>
+              <ItemHistoryList events={history} />
             )}
             </div>
           ) : (
@@ -713,6 +698,7 @@ export default function ItemDetailsSheet({
               serviceItemId={item.id}
               serviceItemTitle={item.title}
               defaultMileage={latestOdometer?.mileage_km ?? null}
+              lastReadingAt={latestOdometer?.occurred_at ?? null}
               disabled={!latestOdometer}
               disabledHint={RU.items.noMileageHint}
               onSuccess={handleMarkReplacementSuccess}

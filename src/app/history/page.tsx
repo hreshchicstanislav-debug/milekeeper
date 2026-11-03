@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import DeleteLatestMileageButton from './components/DeleteLatestMileageButton';
 import EditLatestMileageButton from './components/EditLatestMileageButton';
+import { positiveMileageDelta } from '@/lib/mileage/mileageGain';
 
 /**
  * Pick the latest entry from an already-loaded list.
@@ -59,9 +60,9 @@ export default async function HistoryPage() {
               <div className="history-list">
                 {entries.map((entry, index) => {
                   const previousEntry = entries[index + 1];
-                  const deltaKm = previousEntry
-                    ? entry.mileage_km - previousEntry.mileage_km
-                    : null;
+                  // Backdated readings can make the difference zero or negative:
+                  // such a difference is not a gain, so it is not shown with "+".
+                  const deltaKm = positiveMileageDelta(entry.mileage_km, previousEntry?.mileage_km);
 
                   return (
                     <div key={entry.id} className={`history-row ${index === entries.length - 1 ? 'last' : ''}`}>

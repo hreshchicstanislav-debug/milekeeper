@@ -9,6 +9,8 @@ interface MarkReplacementButtonProps {
   serviceItemId: string;
   serviceItemTitle: string;
   defaultMileage?: number | null;
+  /** Date of the actual reading behind `defaultMileage`, shown next to it in the form. */
+  lastReadingAt?: string | null;
   disabled?: boolean;
   disabledHint?: string;
   onSuccess?: () => void;
@@ -18,6 +20,7 @@ export default function MarkReplacementButton({
   serviceItemId,
   serviceItemTitle,
   defaultMileage,
+  lastReadingAt = null,
   disabled = false,
   disabledHint,
   onSuccess,
@@ -72,6 +75,7 @@ export default function MarkReplacementButton({
         serviceItemId={serviceItemId}
         serviceItemTitle={serviceItemTitle}
         defaultMileage={currentMileage ?? defaultMileage ?? null}
+        lastReadingAt={lastReadingAt}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSuccess={onSuccess}

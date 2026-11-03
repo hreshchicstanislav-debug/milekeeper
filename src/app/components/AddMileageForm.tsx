@@ -11,9 +11,20 @@ import { getAppMode, AppMode, isTestMode } from '@/lib/appMode';
 import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
+import { previewEntryGain } from '@/lib/mileage/mileageGain';
+import { resolveNewReadingTime } from '@/lib/mileage/readingChronology';
+import { addMileageErrorText } from '@/lib/mileage/addMileageMessages';
 
-export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string } = {}) {
-  const { formatMileageInput, RU, t, intlLocale, errorMessageText } = useCopy();
+interface AddMileageFormProps {
+  buttonLabel?: string;
+  /** Highest actual reading (the baseline the server validates against), for the live gain hint. */
+  lastMileageKm?: number | null;
+  /** `occurred_at` of the latest reading by date: new readings may not be dated earlier. */
+  latestReadingAt?: string | null;
+}
+
+export default function AddMileageForm({ buttonLabel, lastMileageKm = null, latestReadingAt = null }: AddMileageFormProps = {}) {
+  const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
   const [isOpen, setIsOpen] = useState(false);
   const [mileageKm, setMileageKm] = useState('');
   const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
@@ -77,16 +88,35 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
     let submissionOccurredAt: Date;
     if (isTestMode()) {
       submissionOccurredAt = getAppNow();
-    } else {
+    } else if (showDate) {
       submissionOccurredAt = fromDateTimeLocalValue(occurredAt);
+    } else {
+      // Date not changed by the user: record the moment of saving (the form may have
+      // been open for a while, and the minute-rounded value could fall before a
+      // reading saved in the meantime).
+      submissionOccurredAt = new Date();
+    }
+
+    // Explain the chronology rule before sending; the server enforces it as well (with the
+    // freshest latest reading, and stores a same-minute time just after that reading).
+    const readingTime = resolveNewReadingTime(submissionOccurredAt, latestReadingAt);
+    if (!readingTime.ok) {
+      setError(addMileageErrorText({ RU, displayDateTime }, { reason: 'date-before-latest', latestOccurredAt: readingTime.latestOccurredAt }));
+      setIsSubmitting(false);
+      return;
     }
 
     try {
-      const insertedEntry = await addOdometerEntry({
+      const result = await addOdometerEntry({
         occurredAt: submissionOccurredAt,
         mileageKm: mileage,
         note: note ? trimWhitespace(note) : null,
       });
+      if (!result.ok) {
+        setError(addMileageErrorText({ RU, displayDateTime }, result));
+        return;
+      }
+      const insertedEntry = result.entry;
 
       // In TEST mode: advance AppNow to keep timeline monotonic and avoid duplicate timestamps
       // This ensures (a) new entry is never 'in the future' relative to AppNow,
@@ -117,13 +147,9 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
       // revalidatePath('/'), so Next.js re-renders the current page and streams the
       // updated RSC payload back in the same response as the action result.
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : RU.mileageForm.errorFailedToAdd;
-      // Переводим известные ошибки с сервера
-      if (errorMessage.includes('Mileage must be greater')) {
-        setError(RU.mileageForm.errorMileageMustBeGreater);
-      } else {
-        setError(errorMessage);
-      }
+      // Unexpected failure (session, database, network): never show server details.
+      console.error('Failed to add odometer entry', err);
+      setError(addMileageErrorText({ RU, displayDateTime }, { reason: 'unexpected' }));
     } finally {
       setIsSubmitting(false);
     }
@@ -140,6 +166,9 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
 
   // Swipe-to-close gesture
   useSwipeToClose<HTMLFormElement>(formRef, handleCancel, isOpen);
+
+  // Recomputed on every keystroke; nothing is shown for empty, partial or invalid input.
+  const gainPreview = previewEntryGain(mileageKm, lastMileageKm);
 
   return (
     <>
@@ -189,7 +218,17 @@ export default function AddMileageForm({ buttonLabel }: { buttonLabel?: string }
               disabled={isSubmitting}
               placeholder={RU.mileageForm.mileagePlaceholder}
               className="mileage-input"
+              aria-describedby={lastMileageKm !== null ? 'mileageGainPreview' : undefined}
             />
+            {lastMileageKm !== null && (
+              <p id="mileageGainPreview" className="form-field-hint mileage-gain-preview" aria-live="polite" data-gain={gainPreview.kind}>
+                {gainPreview.kind === 'gain'
+                  ? RU.mileageForm.gainPreview.replace('{value}', formatNumber(gainPreview.km))
+                  : gainPreview.kind === 'not-greater'
+                    ? RU.mileageForm.notGreaterHint.replace('{value}', formatNumber(gainPreview.lastKm))
+                    : null}
+              </p>
+            )}
           </div>
 
           <div className="form-field">

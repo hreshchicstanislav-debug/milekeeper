@@ -8,6 +8,8 @@ import Link from 'next/link';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
 import MarkReplacementButton from '@/app/components/MarkReplacementButton';
+import ItemHistoryList from '@/app/components/ItemHistoryList';
+import { ITEM_HISTORY_FETCH_LIMIT } from '@/lib/service/replacementIntervals';
 import AddServiceItemForm from '@/app/components/AddServiceItemForm';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
@@ -72,7 +74,8 @@ export default function ItemDetailsPageClient({
   }, [activeTab, item.id, router]); // Removed searchParams from dependencies to break the loop
 
   const loadHistory = async (force = false) => {
-    const limit = 10;
+    // One record more than shown: it supplies the predecessor of the oldest visible row.
+    const limit = ITEM_HISTORY_FETCH_LIMIT;
     const key = `${item.id}:${limit}`;
 
     // Cancel previous request if any
@@ -227,25 +230,7 @@ export default function ItemDetailsPageClient({
             ) : history.length === 0 ? (
               <div className="item-history-empty">{RU.items.historyEmpty}</div>
             ) : (
-              <>
-                <ul className="item-history-list">
-                  {history.map((event) => (
-                    <li key={event.id} className="item-history-row">
-                      <span className="item-history-date">
-                        <LocalDateTime iso={event.occurred_at} />
-                      </span>
-                      <span className="item-history-mileage">
-                        {formatNumber(event.mileage_km)} {RU.common.km}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {history.length >= 10 && (
-                  <div className="item-history-hint">
-                    {RU.items.showAllHistoryHint}
-                  </div>
-                )}
-              </>
+              <ItemHistoryList events={history} />
             )}
           </div>
         ) : (
@@ -406,6 +391,7 @@ export default function ItemDetailsPageClient({
             serviceItemId={item.id}
             serviceItemTitle={item.title}
             defaultMileage={latestOdometer?.mileage_km ?? null}
+            lastReadingAt={latestOdometer?.occurred_at ?? null}
             disabled={!latestOdometer}
             disabledHint={RU.items.noMileageHint}
             onSuccess={handleMarkReplacementSuccess}
