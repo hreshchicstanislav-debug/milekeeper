@@ -13,6 +13,7 @@ import { occurredAtFromDateInput, toDateInputValue } from '@/lib/time/datetimeLo
 import {
   parseAmountLitersInput,
   SERVICE_EVENT_KINDS,
+  SERVICE_EVENT_MIN_DATE,
   SERVICE_EVENT_NOTE_MAX_LENGTH,
 } from '@/lib/service/serviceEventKinds';
 import { LocalDateTime } from './LocalDateTime';
@@ -54,7 +55,11 @@ export default function AddServiceEventForm({
   const copy = RU.items.serviceEvent;
   const [kind, setKind] = useState<ServiceEventKind | null>(null);
   const [date, setDate] = useState(() => toDateInputValue(new Date()));
+  // What the user typed. Until they type, the field shows the last reading (see `mileageValue`).
   const [mileageKm, setMileageKm] = useState('');
+  const [mileageTouched, setMileageTouched] = useState(false);
+  // Today is shown as one compact line; the date input appears on demand.
+  const [dateEditing, setDateEditing] = useState(false);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<FormError | null>(null);
@@ -66,11 +71,16 @@ export default function AddServiceEventForm({
   const [isOdometerOpen, setIsOdometerOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const messageRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   // On a phone the form scrolls: bring a new message into view next to the fields.
   useEffect(() => {
     if (error || notice) messageRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
   }, [error, notice]);
+
+  useEffect(() => {
+    if (dateEditing) dateInputRef.current?.focus();
+  }, [dateEditing]);
 
   useSwipeToClose<HTMLFormElement>(formRef, onClose, isOpen && !isOdometerOpen);
 
@@ -80,7 +90,9 @@ export default function AddServiceEventForm({
     if (!isOpen) return;
     setKind(null);
     setDate(toDateInputValue(new Date()));
-    setMileageKm(defaultMileage ? formatMileageInput(String(defaultMileage)) : '');
+    setMileageKm('');
+    setMileageTouched(false);
+    setDateEditing(false);
     setAmount('');
     setNote('');
     setError(null);
@@ -96,12 +108,25 @@ export default function AddServiceEventForm({
     setLastReading((current) => (current && current.km >= defaultMileage ? current : { km: defaultMileage, at: lastReadingAt }));
   }, [isOpen, defaultMileage, lastReadingAt]);
 
+  // A date before the last odometer reading must not silently get that (later) reading's
+  // mileage: the field stays empty until the user states the mileage for the chosen date.
+  // What the user has typed is never replaced.
+  const readingTime = lastReading?.at ? new Date(lastReading.at) : null;
+  const readingDate = readingTime && !Number.isNaN(readingTime.getTime()) ? toDateInputValue(readingTime) : null;
+  const isHistoricalDate = readingDate !== null && date !== '' && date < readingDate;
+  const autoMileage = lastReading ? formatMileageInput(String(lastReading.km)) : '';
+  const mileageValue = mileageTouched ? mileageKm : isHistoricalDate ? '' : autoMileage;
+
   const rejectionError = (rejection: AddServiceEventRejection, enteredKm: number): FormError => {
     switch (rejection.reason) {
       case 'mileage-above-odometer':
         return { type: 'above-odometer', enteredKm, odometerKm: rejection.odometerKm };
       case 'invalid-amount':
         return { type: 'text', text: copy.errorAmountInvalid };
+      case 'date-in-future':
+        return { type: 'text', text: copy.errorDateInFuture };
+      case 'date-too-old':
+        return { type: 'text', text: copy.errorDateTooOld };
       case 'item-unavailable':
         return { type: 'text', text: copy.errorItemUnavailable };
       case 'no-odometer':
@@ -124,12 +149,18 @@ export default function AddServiceEventForm({
       return;
     }
     if (date > toDateInputValue(today)) {
+      setDateEditing(true);
       setError({ type: 'text', text: copy.errorDateInFuture });
       return;
     }
-    const mileage = parseMileageInput(mileageKm);
+    if (date < SERVICE_EVENT_MIN_DATE) {
+      setDateEditing(true);
+      setError({ type: 'text', text: copy.errorDateTooOld });
+      return;
+    }
+    const mileage = parseMileageInput(mileageValue);
     if (mileage === null || mileage <= 0) {
-      setError({ type: 'text', text: mileageKm.trim() ? copy.errorMileageInvalid : copy.errorMileageRequired });
+      setError({ type: 'text', text: mileageValue.trim() ? copy.errorMileageInvalid : copy.errorMileageRequired });
       return;
     }
     const amountInput = kind === 'top_up' ? parseAmountLitersInput(amount) : { ok: true as const, value: null };
@@ -162,6 +193,7 @@ export default function AddServiceEventForm({
         if (result.reason === 'mileage-above-odometer') {
           setLastReading({ km: result.odometerKm, at: result.odometerAt });
         }
+        if (result.reason === 'date-in-future' || result.reason === 'date-too-old') setDateEditing(true);
         setError(rejectionError(result, mileage));
         return;
       }
@@ -183,8 +215,10 @@ export default function AddServiceEventForm({
     return null;
   }
 
-  const enteredMileage = parseMileageInput(mileageKm);
-  const [readingBefore, readingAfter] = copy.lastReading.replace('{value}', lastReading ? formatNumber(lastReading.km) : '').split('{date}');
+  const enteredMileage = parseMileageInput(mileageValue);
+  const [readingBefore, readingAfter] = (isHistoricalDate ? copy.lastReadingHistorical : copy.lastReading)
+    .replace('{value}', lastReading ? formatNumber(lastReading.km) : '').split('{date}');
+  const todayValue = toDateInputValue(new Date());
 
   return (
     <>
@@ -253,43 +287,35 @@ export default function AddServiceEventForm({
 
           {kind && (
             <>
-              <div className="form-field">
-                <label htmlFor="serviceEventDate">{copy.dateLabel}</label>
-                <input
-                  id="serviceEventDate"
-                  type="date"
-                  value={date}
-                  max={toDateInputValue(new Date())}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  disabled={isSubmitting}
-                  className="date-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="serviceEventMileageKm">{copy.mileageLabel}</label>
-                <input
-                  id="serviceEventMileageKm"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9,\s]*"
-                  value={formatMileageInput(mileageKm)}
-                  onChange={(e) => { setMileageKm(formatMileageInput(e.target.value)); if (error?.type === 'above-odometer') setError(null); }}
-                  required
-                  disabled={isSubmitting}
-                  placeholder={copy.mileagePlaceholder}
-                  className="mileage-input"
-                  aria-describedby={lastReading ? 'serviceEventLastReading' : undefined}
-                />
-                {lastReading ? (
-                  <p id="serviceEventLastReading" className="form-field-hint" data-testid="service-event-last-reading">
-                    {readingBefore}
-                    <LocalDateTime iso={lastReading.at} dateOnly fallback="—" />
-                    {readingAfter}
-                  </p>
-                ) : null}
-              </div>
+              {dateEditing || date !== todayValue ? (
+                <div className="form-field">
+                  <label htmlFor="serviceEventDate">{copy.dateLabel}</label>
+                  <input
+                    id="serviceEventDate"
+                    ref={dateInputRef}
+                    type="date"
+                    value={date}
+                    min={SERVICE_EVENT_MIN_DATE}
+                    max={todayValue}
+                    onChange={(e) => { setDate(e.target.value); setError(null); }}
+                    required
+                    disabled={isSubmitting}
+                    className="date-input"
+                  />
+                </div>
+              ) : (
+                <div className="service-event-date-row" data-testid="service-event-date-today">
+                  <span className="service-event-date-value">{copy.dateLabel}: {copy.dateToday}</span>
+                  <button
+                    type="button"
+                    className="service-event-date-change"
+                    onClick={() => setDateEditing(true)}
+                    disabled={isSubmitting}
+                  >
+                    {copy.changeDate}
+                  </button>
+                </div>
+              )}
 
               {kind === 'top_up' && (
                 <div className="form-field">
@@ -307,6 +333,38 @@ export default function AddServiceEventForm({
                   />
                 </div>
               )}
+
+              <div className="form-field">
+                <label htmlFor="serviceEventMileageKm">{copy.mileageLabel}</label>
+                <input
+                  id="serviceEventMileageKm"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9,\s]*"
+                  value={mileageValue}
+                  onChange={(e) => {
+                    setMileageKm(formatMileageInput(e.target.value));
+                    setMileageTouched(true);
+                    if (error?.type === 'above-odometer') setError(null);
+                  }}
+                  required
+                  disabled={isSubmitting}
+                  placeholder={copy.mileagePlaceholder}
+                  className="mileage-input"
+                  aria-describedby={lastReading ? 'serviceEventLastReading' : undefined}
+                />
+                {lastReading ? (
+                  <p
+                    id="serviceEventLastReading"
+                    className={`form-field-hint${isHistoricalDate ? ' is-attention' : ''}`}
+                    data-testid={isHistoricalDate ? 'service-event-historical-reading' : 'service-event-last-reading'}
+                  >
+                    {readingBefore}
+                    <LocalDateTime iso={lastReading.at} dateOnly fallback="—" />
+                    {readingAfter}
+                  </p>
+                ) : null}
+              </div>
 
               <div className="form-field">
                 <label htmlFor="serviceEventNote">{copy.noteLabel}</label>
@@ -336,7 +394,7 @@ export default function AddServiceEventForm({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !kind || !mileageKm}
+            disabled={isSubmitting || !kind || !mileageValue}
             className="submit-button"
             data-service-event-submit
           >

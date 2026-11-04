@@ -23,12 +23,16 @@ export function findLastReplacement<T extends { kind?: ServiceEventKind | null }
   return eventsNewestFirst.find(isReplacementEvent) ?? null;
 }
 
-/** Upper bound of a top-up volume; mirrors `service_events_amount_liters_check`. */
-export const AMOUNT_LITERS_MAX = 99.99;
+/**
+ * Largest top-up volume. This is not a product rule: it is what the column
+ * `amount_liters numeric(5,2)` can hold (3 integer digits, 2 decimals). The database
+ * itself only checks `amount_liters > 0`, the type does the rest.
+ */
+export const AMOUNT_LITERS_MAX = 999.99;
 /** Maximum comment length accepted from the form and by the server action. */
 export const SERVICE_EVENT_NOTE_MAX_LENGTH = 1000;
 
-/** Positive, at most `AMOUNT_LITERS_MAX`, at most two decimals. */
+/** Positive, at most two decimals, within the `numeric(5,2)` range (`AMOUNT_LITERS_MAX`). */
 export function isValidAmountLiters(value: unknown): value is number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return false;
   if (value <= 0 || value > AMOUNT_LITERS_MAX) return false;
@@ -46,7 +50,29 @@ export type AmountLitersInput =
 export function parseAmountLitersInput(raw: string): AmountLitersInput {
   const text = raw.trim().replace(/\s+/g, '');
   if (text === '') return { ok: true, value: null };
-  if (!/^\d{1,2}(?:[.,]\d{1,2})?$|^[.,]\d{1,2}$/.test(text)) return { ok: false };
+  if (!/^\d{1,3}(?:[.,]\d{1,2})?$|^[.,]\d{1,2}$/.test(text)) return { ok: false };
   const value = Number(text.replace(',', '.'));
   return isValidAmountLiters(value) ? { ok: true, value } : { ok: false };
+}
+
+/**
+ * Earliest date accepted for a service record. Any real car fits; the bound only keeps
+ * obviously mistyped years (0001, 1015) out of the history.
+ */
+export const SERVICE_EVENT_MIN_DATE = '1950-01-01';
+/** A client clock may run slightly ahead of the server; anything beyond is a future date. */
+const FUTURE_TOLERANCE_MS = 10 * 60 * 1000;
+
+export type ServiceEventDateCheck = 'ok' | 'in-future' | 'too-old';
+
+/**
+ * Checks the moment a record is dated. A valid record is never later than "now" (today is
+ * stored as the current moment, other days as local noon), so a comparison of instants is
+ * independent of the user's time zone.
+ */
+export function checkServiceEventDate(occurredAt: Date, now: Date): ServiceEventDateCheck {
+  if (occurredAt.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) return 'in-future';
+  // One day of slack so the bound holds in every time zone.
+  if (occurredAt.getTime() < Date.parse(`${SERVICE_EVENT_MIN_DATE}T00:00:00Z`) - 24 * 60 * 60 * 1000) return 'too-old';
+  return 'ok';
 }

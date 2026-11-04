@@ -131,7 +131,7 @@ describe('item history: kinds in one timeline', () => {
 });
 
 describe('record form: kind first, then the fields', () => {
-  it.each([['/', ['Что вы сделали?', 'Заменил полностью', 'Осмотрел состояние', 'Добавил жидкость']], ['/en', ['What did you do?', 'Replaced it completely', 'Inspected its condition', 'Added fluid']]])(
+  it.each([['/', ['Что вы сделали?', 'Полная замена', 'Осмотр состояния', 'Добавление жидкости']], ['/en', ['What did you do?', 'Full replacement', 'Condition inspection', 'Adding fluid']]])(
     'asks for the kind without preselecting one (%s)', (pathname, texts) => {
       mocks.pathname = pathname;
       const html = renderToStaticMarkup(

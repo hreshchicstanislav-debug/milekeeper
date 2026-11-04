@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServiceEvent, ServiceEventKind, ServiceItem } from '@/lib/db/types';
 import { calcServiceStatus } from '../calcServiceStatus';
-import { findLastReplacement, isReplacementEvent, parseAmountLitersInput } from '../serviceEventKinds';
+import {
+  AMOUNT_LITERS_MAX, checkServiceEventDate, findLastReplacement, isReplacementEvent, isValidAmountLiters, parseAmountLitersInput,
+  SERVICE_EVENT_MIN_DATE,
+} from '../serviceEventKinds';
 import { getGettingStartedStep } from '@/lib/home/gettingStarted';
 import { occurredAtFromDateInput, toDateInputValue } from '@/lib/time/datetimeLocal';
 
@@ -119,10 +122,20 @@ describe('kind helpers', () => {
 
   it.each([
     ['', null], ['  ', null], ['0,5', 0.5], ['0.5', 0.5], [' 1 ', 1], ['2,25', 2.25], ['99,99', 99.99], [',5', 0.5], ['1 ,5', 1.5],
+    // No product limit: anything numeric(5,2) can hold is accepted.
+    ['100', 100], ['250,5', 250.5], ['999.99', 999.99], ['999,9', 999.9],
   ])('parses volume %j', (raw, value) => expect(parseAmountLitersInput(raw)).toEqual({ ok: true, value }));
 
-  it.each(['0', '0,00', '100', '1,234', 'abc', '-1', '1,2,3', '1e2', '1.', 'NaN', 'Infinity', '0x10'])(
+  it.each(['0', '0,00', '1,234', '0,001', '1000', '1000,5', '99999', 'abc', '-1', '1,2,3', '1e2', '1.', 'NaN', 'Infinity', '0x10'])(
     'rejects volume %j', (raw) => expect(parseAmountLitersInput(raw)).toEqual({ ok: false }));
+
+  it('keeps the limit equal to the numeric(5,2) range', () => {
+    expect(AMOUNT_LITERS_MAX).toBe(999.99);
+    expect(isValidAmountLiters(999.99)).toBe(true);
+    expect(isValidAmountLiters(1000)).toBe(false);
+    expect(isValidAmountLiters(0.01)).toBe(true);
+    expect(isValidAmountLiters(0.001)).toBe(false);
+  });
 });
 
 describe('date-only field', () => {
@@ -136,5 +149,28 @@ describe('date-only field', () => {
   it('stores local noon for another day and rejects impossible dates', () => {
     expect(occurredAtFromDateInput('2026-03-01', today)).toEqual(new Date(2026, 2, 1, 12));
     for (const value of ['', '2026-02-30', '2026-13-01', '01.03.2026']) expect(occurredAtFromDateInput(value, today)).toBeNull();
+  });
+});
+
+describe('record date check (server rule)', () => {
+  const now = new Date('2026-11-04T10:00:00Z');
+
+  it('accepts now, today, the past and a few minutes of client clock skew', () => {
+    for (const iso of ['2026-11-04T10:00:00Z', '2026-11-04T10:05:00Z', '2026-11-03T12:00:00Z', '2026-01-01T12:00:00Z', '1950-01-01T12:00:00Z']) {
+      expect(checkServiceEventDate(new Date(iso), now), iso).toBe('ok');
+    }
+  });
+
+  it('rejects anything later than now, including tomorrow noon in any time zone', () => {
+    for (const iso of ['2026-11-04T10:11:00Z', '2026-11-05T12:00:00Z', '2027-01-01T00:00:00Z', '9999-12-31T00:00:00Z']) {
+      expect(checkServiceEventDate(new Date(iso), now), iso).toBe('in-future');
+    }
+  });
+
+  it('rejects mistyped years that are far too old', () => {
+    expect(SERVICE_EVENT_MIN_DATE).toBe('1950-01-01');
+    for (const iso of ['1949-06-01T12:00:00Z', '1015-03-01T12:00:00Z', '0001-01-01T00:00:00Z']) {
+      expect(checkServiceEventDate(new Date(iso), now), iso).toBe('too-old');
+    }
   });
 });

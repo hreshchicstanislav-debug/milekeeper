@@ -21,15 +21,16 @@ ALTER TABLE public.service_events
 ALTER TABLE public.service_events
   ADD CONSTRAINT service_events_kind_check
     CHECK (kind IN ('replacement', 'check', 'top_up')),
-  -- A volume is optional and only meaningful for a top-up.
+  -- A volume is optional, only meaningful for a top-up and positive. There is no
+  -- product limit: the upper bound (999.99) and the two decimals come from numeric(5,2).
   ADD CONSTRAINT service_events_amount_liters_check
     CHECK (amount_liters IS NULL
-           OR (kind = 'top_up' AND amount_liters > 0 AND amount_liters <= 99.99));
+           OR (kind = 'top_up' AND amount_liters > 0));
 
 COMMENT ON COLUMN public.service_events.kind IS
   'replacement starts a new interval; check and top_up are history records only';
 COMMENT ON COLUMN public.service_events.amount_liters IS
-  'Optional volume of a top_up, litres (0 < value <= 99.99)';
+  'Optional volume of a top_up, litres (value > 0; numeric(5,2) allows up to 999.99)';
 
 -- The application does not call this RPC, but it exists in the database. Keep its
 -- signature and SECURITY INVOKER semantics (RLS applies) and make it return the last

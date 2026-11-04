@@ -49,6 +49,24 @@ function expectedIntervals(events) {
   };
   const rows = () => page.locator('.item-history-row');
   const shot = name => page.screenshot({ path: path.join(artifacts, name + '.png') });
+  /** The kind titles never wrap inside a word or onto a second line (e.g. "Replaceme/nt" at 320 px). */
+  const assertKindTitlesIntact = async (label) => {
+    const broken = await page.evaluate(() => [...document.querySelectorAll('dialog[open] .service-event-kinds.is-chosen .service-event-kind-title')].filter(el => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+      return el.getBoundingClientRect().height > lineHeight * 1.2 || el.scrollWidth > el.clientWidth + 1;
+    }).map(el => el.textContent));
+    assert.deepEqual(broken, [], 'Kind title wrapped or clipped: ' + label);
+  };
+  /** The element is fully visible in the form without scrolling (above the action buttons). */
+  const assertVisibleWithoutScrolling = async (selector, label) => {
+    const result = await page.evaluate((sel) => {
+      const el = document.querySelector(sel).getBoundingClientRect();
+      const bar = document.querySelector('dialog[open] .form-actions').getBoundingClientRect();
+      const dialog = document.querySelector('dialog[open]').getBoundingClientRect();
+      return { top: el.top, bottom: el.bottom, barTop: bar.top, dialogTop: dialog.top };
+    }, selector);
+    assert(result.top >= result.dialogTop && result.bottom <= result.barTop, `${label} needs scrolling: ${JSON.stringify(result)}`);
+  };
 
   for (const locale of ['ru', 'en']) {
     const en = locale === 'en', prefix = en ? '/en' : '';
@@ -57,13 +75,17 @@ function expectedIntervals(events) {
       check: /^Check/, topUp: /^Top-up/, replacement: /^Replacement/, mileage: 'Odometer, km', volume: 'Volume, L (optional)', comment: 'Comment (optional)',
       saveCheck: 'Save check', saveTopUp: 'Save top-up', update: 'Update odometer', saveOdometer: 'Save', odometerTitle: 'Add odometer reading',
       deleteRecord: 'Delete record', cancel: 'Cancel', lastReplacement: 'Last replacement', above: 'is higher than the last recorded reading',
-      updated: 'Odometer updated: 120,500 km', warning: 'This is a replacement', volumeText: '0.5 L', kindCheck: 'Check', kindTopUp: 'Top-up',
+      updated: 'Odometer updated: 120,500 km', warning: 'This is the latest replacement', volumeText: '0.5 L', kindCheck: 'Check', kindTopUp: 'Top-up',
+      changeDate: 'Change date', historical: 'The selected date is earlier than the last odometer reading', futureDate: 'The date cannot be later than today',
+      replacementKind: 'Replacement', saveReplacement: 'Save replacement',
     } : {
       google: 'Войти через Google', add: 'Добавить запись', more: 'Показать ещё', calc: 'Расчёт', history: 'История',
       check: /^Проверка/, topUp: /^Долив/, replacement: /^Замена/, mileage: 'Пробег, км', volume: 'Объём, л (необязательно)', comment: 'Комментарий (необязательно)',
       saveCheck: 'Сохранить проверку', saveTopUp: 'Сохранить долив', update: 'Обновить пробег', saveOdometer: 'Сохранить', odometerTitle: 'Добавить пробег',
       deleteRecord: 'Удалить запись', cancel: 'Отмена', lastReplacement: 'Последняя замена', above: 'больше последнего показания одометра',
-      updated: 'Пробег обновлён: 120 500 км', warning: 'Это замена', volumeText: '0,5 л', kindCheck: 'Проверка', kindTopUp: 'Долив',
+      updated: 'Пробег обновлён: 120 500 км', warning: 'Это последняя замена', volumeText: '0,5 л', kindCheck: 'Проверка', kindTopUp: 'Долив',
+      changeDate: 'Изменить дату', historical: 'Выбранная дата раньше последнего показания одометра', futureDate: 'Дата не может быть позже сегодняшней',
+      replacementKind: 'Замена', saveReplacement: 'Сохранить замену',
     };
     fixture.setScenario('mixed');
     await page.goto('http://localhost:3101' + prefix + '/login');
@@ -160,6 +182,61 @@ function expectedIntervals(events) {
     assert.equal(fixture.events.length, eventsBefore + 1);
     console.log(`PASS ${locale}: mileage above odometer rejected → "Update odometer" → returned with input kept → saved; one odometer entry`);
 
+    // 5b. A date before the last odometer reading must not silently take the current mileage.
+    await page.goto(itemUrl); await rows().first().waitFor();
+    const eventsBeforeHistoric = fixture.events.length;
+    await page.getByRole('button', { name: L.add, exact: true }).click();
+    dialog = page.getByRole('dialog').last();
+    await dialog.getByRole('radio', { name: L.check }).check();
+    assert.match((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), /^120500$/);
+    await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+    await dialog.locator('#serviceEventDate').fill('2020-01-15');
+    assert.equal(await dialog.getByLabel(L.mileage).inputValue(), '', 'Current mileage left in the field for an old date');
+    await dialog.getByTestId('service-event-historical-reading').waitFor();
+    assert.match(await dialog.getByTestId('service-event-historical-reading').innerText(), new RegExp(L.historical));
+    assert.equal(await dialog.getByRole('button', { name: L.saveCheck, exact: true }).isDisabled(), true);
+    await noOverflow('historical date'); await shot(locale + '-historical-date');
+    await dialog.getByLabel(L.mileage).fill('90000');
+    await dialog.getByLabel(L.comment).fill('Историческая проверка');
+    await dialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(fixture.events.length, eventsBeforeHistoric + 1);
+    const historic = fixture.events.find(e => e.note === 'Историческая проверка');
+    assert.equal(historic.mileage_km, 90000); assert.equal(historic.kind, 'check');
+    assert.match(historic.occurred_at, /^2020-01-1[45]/);
+    assert.equal(fixture.odometer.length, odometerCount + 1, 'Historical record wrote the odometer');
+    // A typed mileage is never erased by changing the date.
+    await page.getByRole('button', { name: L.add, exact: true }).click();
+    dialog = page.getByRole('dialog').last();
+    await dialog.getByRole('radio', { name: L.check }).check();
+    await dialog.getByLabel(L.mileage).fill('110000');
+    await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+    await dialog.locator('#serviceEventDate').fill('2020-02-01');
+    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '110000', 'Typed mileage was erased');
+    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+    console.log(`PASS ${locale}: old date → empty mileage + explicit prompt; typed mileage kept; saved with the stated mileage`);
+
+    // 5c. The server refuses a future date even if the form let it through (browser clock three days ahead).
+    // A separate context: the clock belongs to the context and must not leak into the other checks.
+    const skewedContext = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Almaty', storageState: await context.storageState() });
+    await skewedContext.route('**/*', route => {
+      const url = new URL(route.request().url());
+      return ['localhost', '127.0.0.1'].includes(url.hostname) && ['3101', '54329'].includes(url.port) ? route.continue() : route.abort('blockedbyclient');
+    });
+    const skewed = await skewedContext.newPage();
+    skewed.setDefaultTimeout(20000);
+    await skewed.clock.setFixedTime(new Date(Date.now() + 3 * 86400000));
+    await skewed.goto(itemUrl); await skewed.locator('.item-history-row').first().waitFor();
+    await skewed.getByRole('button', { name: L.add, exact: true }).click();
+    const skewedDialog = skewed.getByRole('dialog').last();
+    await skewedDialog.getByRole('radio', { name: L.check }).check();
+    const eventsBeforeFuture = fixture.events.length;
+    await skewedDialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
+    await skewedDialog.getByText(L.futureDate).waitFor();
+    assert.equal(fixture.events.length, eventsBeforeFuture, 'A future-dated record was saved');
+    await skewedContext.close();
+    console.log(`PASS ${locale}: future date refused by the server with an understandable message`);
+
     // 6. Delete: a check (forecast unchanged), then the newest replacement (with a warning; recomputed).
     await page.goto(itemUrl); await rows().first().waitFor();
     const checkRow = rows().filter({ hasText: 'Осмотр перед поездкой' });
@@ -186,16 +263,59 @@ function expectedIntervals(events) {
     assert.equal(fixture.odometer.length, odometerCount + 1, 'Deleting changed the odometer');
     console.log(`PASS ${locale}: deleted a check (forecast unchanged) and the last replacement (recomputed: ${after})`);
 
-    // 7. Mobile widths and the /items sheet.
-    for (const width of [320, 390]) {
-      await page.setViewportSize({ width, height: 760 });
+    // 7. Mobile widths: kind segments, volume position, delete confirmation.
+    for (const [width, height] of [[320, 568], [390, 844]]) {
+      await page.setViewportSize({ width, height });
       await page.goto(itemUrl); await rows().first().waitFor();
       await noOverflow('item page ' + width);
       await page.getByRole('button', { name: L.add, exact: true }).click();
       dialog = page.getByRole('dialog').last();
-      await dialog.getByRole('radio', { name: L.topUp }).check();
+      for (const name of [L.replacement, L.check, L.topUp]) {
+        await dialog.getByRole('radio', { name }).check();
+        await assertKindTitlesIntact(`${locale} ${width} ${name}`);
+      }
+      assert.equal(await dialog.locator('.service-event-kind-title', { hasText: L.replacementKind }).count(), 1);
       await noOverflow('form ' + width); await shot(`${locale}-form-${width}`);
+      await assertVisibleWithoutScrolling('#serviceEventAmount', `volume of a top-up (${locale} ${width}x${height})`);
       await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+
+      // Delete confirmation: reachable, fully visible, keyboard-accessible.
+      const last = rows().last();
+      await last.scrollIntoViewIfNeeded();
+      const trigger = last.locator('.item-history-delete');
+      await trigger.click();
+      const confirm = last.locator('.item-history-confirm');
+      await confirm.waitFor();
+      await page.waitForTimeout(150);
+      const geometry = await page.evaluate(() => {
+        const box = document.querySelector('.item-history-confirm').getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('.item-history-confirm-actions button')].map(b => b.getBoundingClientRect());
+        const rail = document.querySelector('.item-details-page-footer, .item-details-actions')?.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, buttonBottom: Math.max(...buttons.map(b => b.bottom)), buttonTop: Math.min(...buttons.map(b => b.top)), railTop: rail ? rail.top : innerHeight, innerHeight };
+      });
+      const limit = Math.min(geometry.railTop, geometry.innerHeight);
+      assert(geometry.buttonTop >= 0 && geometry.buttonBottom <= limit + 0.5, `Delete confirmation buttons not visible (${locale} ${width}): ${JSON.stringify(geometry)}`);
+      // Nothing (sticky bar, header) covers the buttons: the element at their centre is the button itself.
+      for (const name of [L.cancel, L.deleteRecord]) {
+        const covered = await last.getByRole('button', { name, exact: true }).evaluate(el => {
+          const r = el.getBoundingClientRect();
+          const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return !(top === el || el.contains(top));
+        });
+        assert.equal(covered, false, `"${name}" is covered by another element (${locale} ${width})`);
+      }
+      assert.equal(await page.evaluate(() => document.activeElement?.textContent), L.cancel, 'Focus must start on Cancel');
+      await noOverflow('delete confirm ' + width); await shot(`${locale}-delete-confirm-${width}`);
+      // Escape closes only the confirmation and returns to the delete button.
+      await page.keyboard.press('Escape');
+      await confirm.waitFor({ state: 'detached' });
+      assert.equal(await trigger.evaluate(el => el === document.activeElement), true, 'Focus not returned to the delete button');
+      // Keyboard path: Tab reaches "Delete record" after "Cancel".
+      await trigger.click(); await confirm.waitFor();
+      await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement?.textContent), L.deleteRecord, 'Tab does not reach the delete button');
+      await last.getByRole('button', { name: L.cancel, exact: true }).click();
+      await confirm.waitFor({ state: 'detached' });
     }
     // The items list opens the item page; the timeline there is fully localized.
     await page.goto('http://localhost:3101' + prefix + '/items');

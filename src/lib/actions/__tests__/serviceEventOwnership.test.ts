@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServiceEventInput } from '@/lib/db/types';
 
 const mocks = vi.hoisted(() => ({
@@ -99,13 +99,17 @@ describe('addServiceEvent kinds and validation', () => {
     ['top_up', 0.5, 0.5],
     ['top_up', null, null],
     ['top_up', 99.99, 99.99],
+    // No product limit below the numeric(5,2) range.
+    ['top_up', 100, 100],
+    ['top_up', 250.5, 250.5],
+    ['top_up', 999.99, 999.99],
   ] as const)('stores a %s with volume %s', async (kind, amountLiters, stored) => {
     await expect(addServiceEvent({ ...input, kind, amountLiters, note: '  level ok  ' })).resolves.toMatchObject({ ok: true });
     expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ kind, amount_liters: stored, note: 'level ok' }));
   });
 
   it.each([
-    ['check', 1], ['replacement', 1], ['top_up', 0], ['top_up', -1], ['top_up', 100], ['top_up', 1.234], ['top_up', Number.NaN],
+    ['check', 1], ['replacement', 1], ['top_up', 0], ['top_up', -1], ['top_up', 1000], ['top_up', 1000.5], ['top_up', 0.001], ['top_up', 1.234], ['top_up', Number.NaN],
     ['top_up', Number.POSITIVE_INFINITY],
   ] as const)('rejects a volume for %s = %s without inserting', async (kind, amountLiters) => {
     await expect(addServiceEvent({ ...input, kind, amountLiters })).resolves.toEqual({ ok: false, reason: 'invalid-amount' });
@@ -124,6 +128,32 @@ describe('addServiceEvent kinds and validation', () => {
   ])('rejects %s without touching the database', async (_label, patch) => {
     await expect(addServiceEvent({ ...input, ...patch } as unknown as ServiceEventInput)).resolves.toEqual({ ok: false, reason: 'invalid-input' });
     expect(mocks.getClient).not.toHaveBeenCalled();
+  });
+
+  describe('record date', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-11-04T10:00:00Z'));
+    });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it.each(['replacement', 'check', 'top_up'] as const)('rejects a future %s on the server, before any database access', async (kind) => {
+      for (const iso of ['2026-11-05T12:00:00Z', '2026-11-04T11:00:00Z', '2099-01-01T00:00:00Z']) {
+        await expect(addServiceEvent({ ...input, kind, occurredAt: new Date(iso) })).resolves.toEqual({ ok: false, reason: 'date-in-future' });
+      }
+      expect(mocks.getClient).not.toHaveBeenCalled();
+      expect(mocks.insert).not.toHaveBeenCalled();
+    });
+
+    it('rejects an absurdly old date with its own result instead of a database error', async () => {
+      await expect(addServiceEvent({ ...input, occurredAt: new Date('1015-03-01T12:00:00Z') })).resolves.toEqual({ ok: false, reason: 'date-too-old' });
+      expect(mocks.insert).not.toHaveBeenCalled();
+    });
+
+    it('accepts the current moment (today) and yesterday', async () => {
+      await expect(addServiceEvent({ ...input, occurredAt: new Date('2026-11-04T10:00:00Z') })).resolves.toMatchObject({ ok: true });
+      await expect(addServiceEvent({ ...input, occurredAt: new Date('2026-11-03T12:00:00Z') })).resolves.toMatchObject({ ok: true });
+    });
   });
 
   it.each(['replacement', 'check', 'top_up'] as const)('rejects a %s above the recorded odometer with its value', async (kind) => {

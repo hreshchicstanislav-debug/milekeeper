@@ -88,8 +88,21 @@ SELECT kinds_test.expect_error($sql$
 $sql$, '23514', 'negative volume rejected');
 SELECT kinds_test.expect_error($sql$
   INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
-  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 100)
-$sql$, '23514', 'volume above 99.99 rejected');
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 1000)
+$sql$, '22003', 'volume beyond numeric(5,2) is rejected by the column type');
+SELECT kinds_test.expect_error($sql$
+  INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 0.001)
+$sql$, '23514', 'volume that rounds to zero is rejected');
+-- No arbitrary product limit: 100 and the type maximum 999.99 are accepted (rolled back below).
+SAVEPOINT large_volumes;
+INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 100),
+       ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 999.99);
+SELECT kinds_test.assert((SELECT count(*) = 2 FROM public.service_events
+  WHERE kind = 'top_up' AND amount_liters IN (100, 999.99) AND mileage_km = 4000
+    AND service_item_id = '20000000-0000-0000-0000-000000000003'), '100 and 999.99 L accepted');
+ROLLBACK TO SAVEPOINT large_volumes;
 SELECT kinds_test.expect_error($sql$
   UPDATE public.service_events SET kind = 'check', amount_liters = 1
   WHERE id = '30000000-0000-0000-0000-000000000012'

@@ -59,7 +59,9 @@ describe('record form', () => {
 
     await choose('check');
     expect(input('serviceEventMileageKm').props.value).toBe('150 205');
-    expect(input('serviceEventDate').props.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Today is one compact line; the date input only appears on demand.
+    expect(tree.root.findAll((n) => n.props.id === 'serviceEventDate')).toHaveLength(0);
+    expect(all()).toContain('Дата: Сегодня');
     expect(tree.root.findAll((n) => n.props.id === 'serviceEventAmount')).toHaveLength(0);
     expect(all()).toContain('Сохранить проверку');
     expect(all()).toContain('Не меняет интервал замены и прогноз.');
@@ -76,12 +78,39 @@ describe('record form', () => {
   it('rejects an invalid volume before sending', async () => {
     await mount();
     await choose('top_up');
-    for (const value of ['0', '1,234', '100', 'abc']) {
+    for (const value of ['0', '1,234', '1000', '1000,5', 'abc']) {
       await type('serviceEventAmount', value);
       await submit();
-      expect(all()).toContain('Объём — положительное число не больше 99,99 л');
+      expect(all()).toContain('Укажите объём больше нуля, не более двух знаков после запятой (максимум 999,99 л)');
     }
     expect(mocks.addServiceEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([['100', 100], ['250,5', 250.5], ['999,99', 999.99]])('has no product limit below the column range: %s L is sent', async (value, liters) => {
+    await mount();
+    await choose('top_up');
+    await type('serviceEventAmount', value);
+    await submit();
+    expect(mocks.addServiceEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 'top_up', amountLiters: liters }));
+  });
+
+  it('puts the volume of a top-up above the mileage, right after the date line', async () => {
+    await mount();
+    await choose('top_up');
+    const order = tree.root.findAll((n) => typeof n.props.id === 'string' && /^serviceEvent(Amount|MileageKm|Note)$/.test(n.props.id) && n.type !== 'label')
+      .map((n) => n.props.id);
+    expect(order).toEqual(['serviceEventAmount', 'serviceEventMileageKm', 'serviceEventNote']);
+    expect(all().indexOf('Дата: Сегодня')).toBeLessThan(all().indexOf('Объём, л'));
+  });
+
+  it('shows today as one compact line and reveals the date field on demand', async () => {
+    await mount();
+    await choose('check');
+    expect(tree.root.findAll((n) => n.props['data-testid'] === 'service-event-date-today')).toHaveLength(1);
+    await act(async () => { button('Изменить дату').props.onClick(); });
+    expect(input('serviceEventDate').props.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(input('serviceEventDate').props.min).toBe('1950-01-01');
+    expect(tree.root.findAll((n) => n.props['data-testid'] === 'service-event-date-today')).toHaveLength(0);
   });
 
   it('saves a top-up with a decimal comma and comment, without touching the odometer', async () => {
@@ -139,6 +168,101 @@ describe('record form', () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
+  describe('date before the last odometer reading', () => {
+    const pickDate = async (value: string) => {
+      await act(async () => { button('Изменить дату').props.onClick(); });
+      await type('serviceEventDate', value);
+    };
+    const hint = () => tree.root.findAll((n) => n.props['data-testid'] === 'service-event-historical-reading');
+
+    it('does not leave the current mileage in the field: asks for the mileage on the chosen date', async () => {
+      await mount();
+      await choose('replacement');
+      expect(input('serviceEventMileageKm').props.value).toBe('150 205');
+
+      await pickDate('2026-09-01');
+      expect(input('serviceEventMileageKm').props.value).toBe('');
+      expect(hint()).toHaveLength(1);
+      expect(all()).toMatch(/Выбранная дата раньше последнего показания одометра \(150 205 км от \S+\)\. Укажите пробег на выбранную дату\./);
+      expect(tree.root.find((n) => n.type === 'button' && n.props['data-service-event-submit']).props.disabled).toBe(true);
+
+      await submit();
+      expect(all()).toContain('Введите пробег');
+      expect(mocks.addServiceEvent).not.toHaveBeenCalled();
+
+      await type('serviceEventMileageKm', '149000');
+      await submit();
+      expect(mocks.addServiceEvent).toHaveBeenCalledWith(expect.objectContaining({
+        kind: 'replacement', mileageKm: 149000, occurredAt: new Date(2026, 8, 1, 12),
+      }));
+    });
+
+    it('restores the last reading when the user returns to a date on or after it (nothing typed)', async () => {
+      await mount();
+      await choose('check');
+      await pickDate('2026-09-01');
+      expect(input('serviceEventMileageKm').props.value).toBe('');
+      await type('serviceEventDate', '2026-10-20');
+      expect(input('serviceEventMileageKm').props.value).toBe('150 205');
+      expect(hint()).toHaveLength(0);
+      expect(all()).toMatch(/Последнее показание одометра: 150 205 км/);
+    });
+
+    it('never erases a mileage the user typed, but keeps the reminder visible', async () => {
+      await mount();
+      await choose('check');
+      await type('serviceEventMileageKm', '140000');
+      await pickDate('2026-09-01');
+      expect(input('serviceEventMileageKm').props.value).toBe('140 000');
+      expect(hint()).toHaveLength(1);
+      await type('serviceEventDate', '2026-10-20');
+      expect(input('serviceEventMileageKm').props.value).toBe('140 000');
+      await submit();
+      expect(mocks.addServiceEvent).toHaveBeenCalledWith(expect.objectContaining({ mileageKm: 140000 }));
+    });
+
+    it('works in English', async () => {
+      mocks.pathname = '/en';
+      await mount();
+      await choose('check');
+      await act(async () => { button('Change date').props.onClick(); });
+      await type('serviceEventDate', '2026-09-01');
+      expect(all()).toMatch(/The selected date is earlier than the last odometer reading \(150,205 km on \S+\)\. Enter the mileage for the selected date\./);
+      expect(input('serviceEventMileageKm').props.value).toBe('');
+    });
+  });
+
+  describe('record date validation', () => {
+    it.each([
+      ['a future date in the form', '2099-01-01', undefined, 'Дата не может быть позже сегодняшней'],
+      ['a mistyped old year in the form', '1015-03-01', undefined, 'Дата не может быть раньше 1 января 1950 года'],
+      ['a future date refused by the server', '2026-10-20', 'date-in-future', 'Дата не может быть позже сегодняшней'],
+      ['an old date refused by the server', '2026-10-20', 'date-too-old', 'Дата не может быть раньше 1 января 1950 года'],
+    ])('explains %s', async (_label, date, serverReason, message) => {
+      if (serverReason) mocks.addServiceEvent.mockResolvedValue({ ok: false, reason: serverReason });
+      await mount();
+      await choose('check');
+      await act(async () => { button('Изменить дату').props.onClick(); });
+      await type('serviceEventDate', date);
+      await submit();
+      expect(all()).toContain(message);
+      expect(mocks.addServiceEvent).toHaveBeenCalledTimes(serverReason ? 1 : 0);
+      expect(onSuccess).not.toHaveBeenCalled();
+      // The date field stays open so the user can fix it.
+      expect(input('serviceEventDate').props.value).toBe(date);
+    });
+
+    it('explains a server date rejection in English', async () => {
+      mocks.pathname = '/en';
+      mocks.addServiceEvent.mockResolvedValue({ ok: false, reason: 'date-in-future' });
+      await mount();
+      await choose('check');
+      await submit();
+      expect(all()).toContain('The date cannot be later than today');
+      expect(input('serviceEventDate')).toBeTruthy();
+    });
+  });
+
   it('never shows server details of an unexpected failure', async () => {
     mocks.addServiceEvent.mockRejectedValue(new Error('duplicate key value violates unique constraint "x"'));
     await mount();
@@ -158,6 +282,7 @@ describe('record form', () => {
     expect(all()).toContain('The odometer reading 151,000 km is higher than the last recorded reading (150,205 km).');
     expect(all()).toContain('Update odometer');
     expect(all()).toContain('Volume, L (optional)');
+    expect(all()).toContain('Date: Today');
     expect(all()).toContain('Save top-up');
     expect(all().replace('Масло', '')).not.toMatch(/[А-Яа-яЁё]/);
   });

@@ -17,6 +17,7 @@ import type {
   ServiceEventInput,
 } from '../db/types';
 import {
+  checkServiceEventDate,
   isReplacementEvent,
   isServiceEventKind,
   isValidAmountLiters,
@@ -350,8 +351,12 @@ export type AddServiceEventResult =
   | { ok: true; event: ServiceEvent }
   /** Malformed kind, date, mileage or comment. */
   | { ok: false; reason: 'invalid-input' }
-  /** Volume given for a kind other than top-up, or outside 0 < value <= 99.99 (2 decimals). */
+  /** Volume given for a kind other than top-up, or not positive / more than 2 decimals / beyond numeric(5,2). */
   | { ok: false; reason: 'invalid-amount' }
+  /** Dated later than now (the form only checks this for convenience; the server decides). */
+  | { ok: false; reason: 'date-in-future' }
+  /** Dated before `SERVICE_EVENT_MIN_DATE`. */
+  | { ok: false; reason: 'date-too-old' }
   | { ok: false; reason: 'item-unavailable' }
   | { ok: false; reason: 'no-odometer' }
   /**
@@ -400,6 +405,9 @@ export async function addServiceEvent(
   ) {
     return { ok: false, reason: 'invalid-input' };
   }
+  const dateCheck = checkServiceEventDate(input.occurredAt, new Date());
+  if (dateCheck === 'in-future') return { ok: false, reason: 'date-in-future' };
+  if (dateCheck === 'too-old') return { ok: false, reason: 'date-too-old' };
   const amountLiters = input.amountLiters ?? null;
   if (amountLiters !== null && (input.kind !== 'top_up' || !isValidAmountLiters(amountLiters))) {
     return { ok: false, reason: 'invalid-amount' };

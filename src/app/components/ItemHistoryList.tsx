@@ -1,11 +1,12 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useCopy } from '@/lib/i18n/client';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
 import type { ServiceEvent } from '@/lib/db/types';
 import { buildItemHistory, type ReplacementInterval } from '@/lib/service/replacementIntervals';
 import { deleteServiceEvent } from '@/lib/actions/serviceActions';
+import { isReplacementEvent } from '@/lib/service/serviceEventKinds';
 import { useToast } from './ToastProvider';
 
 interface ItemHistoryListProps {
@@ -22,6 +23,15 @@ interface ItemHistoryListProps {
 }
 
 /**
+ * What deleting a replacement does to the forecast, derived from the loaded history
+ * (the loaded records are always the newest prefix, `previousReplacement` is exact):
+ * - `latest`: the newest replacement goes, the forecast moves to the previous one;
+ * - `older`: a newer replacement exists, the forecast stays and only intervals change;
+ * - `only`: no other replacement exists, the item goes back to "mark the first replacement".
+ */
+type ReplacementImpact = 'latest' | 'older' | 'only';
+
+/**
  * Service history of one item: replacements, checks and top-ups in one timeline.
  * Shared by the details sheet (/items) and the details page (/items/[id]).
  * Mileage between replacements is shown on replacements only and skips the other kinds.
@@ -36,6 +46,37 @@ export default function ItemHistoryList({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const idPrefix = useId();
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const listRef = useRef<HTMLUListElement>(null);
+  // Only a user action moves focus; the first render with nothing open must not.
+  const focusConfirmFor = useRef<string | null>(null);
+
+  // Opening the confirmation brings it into view (clear of the sticky bottom bar, see
+  // `scroll-margin-bottom` in CSS) and puts keyboard focus on the safe choice, "Cancel".
+  useEffect(() => {
+    if (confirmingId === null || focusConfirmFor.current !== confirmingId) return;
+    focusConfirmFor.current = null;
+    cancelRef.current?.focus({ preventScroll: true });
+    confirmRef.current?.scrollIntoView?.({ block: 'nearest' });
+    // On a short screen the whole confirmation can be taller than the scrollable area:
+    // the buttons are what must be reachable, so bring them in as well.
+    actionsRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [confirmingId]);
+
+  const closeConfirm = (eventId: string, restoreFocus: boolean) => {
+    setConfirmingId(null);
+    setDeleteError(null);
+    if (restoreFocus) triggerRefs.current.get(eventId)?.focus();
+  };
+
+  const impactOf = (index: number, interval: ReplacementInterval): ReplacementImpact | null => {
+    if (!isReplacementEvent(rows[index].event)) return null;
+    if (rows.findIndex((row) => isReplacementEvent(row.event)) !== index) return 'older';
+    return interval.kind === 'first' ? 'only' : 'latest';
+  };
 
   const intervalText = (interval: ReplacementInterval): string | null => {
     switch (interval.kind) {
@@ -50,7 +91,7 @@ export default function ItemHistoryList({
     }
   };
 
-  const handleDelete = async (event: ServiceEvent) => {
+  const handleDelete = async (event: ServiceEvent, impact: ReplacementImpact | null) => {
     setDeletingId(event.id);
     setDeleteError(null);
     try {
@@ -58,10 +99,14 @@ export default function ItemHistoryList({
       setConfirmingId(null);
       if (result.ok) {
         toast.success({
-          title: event.kind === 'replacement' ? RU.items.history.deletedReplacement : RU.items.history.deleted,
+          title: impact === 'latest'
+            ? RU.items.history.deletedReplacement
+            : impact === 'only' ? RU.items.history.deletedOnlyReplacement : RU.items.history.deleted,
           durationMs: 2500,
         });
         onDeleted(event, 'deleted');
+        // The row is gone: keep keyboard focus in the list instead of losing it to the page.
+        listRef.current?.focus({ preventScroll: true });
       } else {
         // Gone already (another tab or device): refresh instead of reporting a failure.
         toast.success({ title: RU.items.history.alreadyDeleted, durationMs: 2500 });
@@ -78,8 +123,9 @@ export default function ItemHistoryList({
 
   return (
     <>
-      <ul className="item-history-list">
-        {rows.map(({ event, interval }) => {
+      <ul className="item-history-list" ref={listRef} tabIndex={-1}>
+        {rows.map(({ event, interval }, index) => {
+          const impact = impactOf(index, interval);
           const text = intervalText(interval);
           const kindLabel = RU.items.serviceEvent.kinds[event.kind] ?? RU.items.serviceEvent.kinds.replacement;
           const confirming = confirmingId === event.id;
@@ -110,8 +156,10 @@ export default function ItemHistoryList({
                   aria-expanded={confirming}
                   title={RU.items.history.delete}
                   disabled={deletingId !== null}
+                  ref={(node) => { if (node) triggerRefs.current.set(event.id, node); else triggerRefs.current.delete(event.id); }}
                   onClick={() => {
                     setDeleteError(null);
+                    if (!confirming) focusConfirmFor.current = event.id;
                     setConfirmingId(confirming ? null : event.id);
                   }}
                 >
@@ -130,22 +178,40 @@ export default function ItemHistoryList({
               )}
               {event.note && <p className="item-history-note">{event.note}</p>}
               {confirming && (
-                <div className="item-history-confirm" role="alertdialog" aria-labelledby={titleId} aria-describedby={`${titleId}-text`}>
+                <div
+                  ref={confirmRef}
+                  className="item-history-confirm"
+                  role="alertdialog"
+                  aria-labelledby={titleId}
+                  aria-describedby={`${titleId}-text`}
+                  onKeyDown={(keyEvent) => {
+                    // Escape closes only this confirmation, not the sheet around it.
+                    if (keyEvent.key !== 'Escape') return;
+                    keyEvent.preventDefault();
+                    keyEvent.stopPropagation();
+                    if (!deleting) closeConfirm(event.id, true);
+                  }}
+                >
                   <p id={titleId} className="item-history-confirm-title">{RU.items.history.confirmTitle}</p>
                   <div id={`${titleId}-text`}>
                     <p className="item-history-confirm-text">{RU.items.history.confirmText}</p>
-                    {event.kind === 'replacement' && (
-                      <p className="item-history-confirm-warning" data-testid="delete-replacement-warning">
-                        {RU.items.history.confirmReplacementWarning}
+                    {impact && (
+                      <p className="item-history-confirm-warning" data-testid="delete-replacement-warning" data-impact={impact}>
+                        {impact === 'latest'
+                          ? RU.items.history.confirmReplacementWarning
+                          : impact === 'older'
+                            ? RU.items.history.confirmReplacementOlder
+                            : RU.items.history.confirmReplacementOnly}
                       </p>
                     )}
                   </div>
                   {deleteError && <p className="item-history-confirm-error" role="alert">{deleteError}</p>}
-                  <div className="item-history-confirm-actions">
+                  <div className="item-history-confirm-actions" ref={actionsRef}>
                     <button
                       type="button"
+                      ref={cancelRef}
                       className="btn btn-secondary"
-                      onClick={() => { setConfirmingId(null); setDeleteError(null); }}
+                      onClick={() => closeConfirm(event.id, true)}
                       disabled={deleting}
                     >
                       {RU.items.history.cancel}
@@ -153,7 +219,7 @@ export default function ItemHistoryList({
                     <button
                       type="button"
                       className="btn item-history-confirm-delete"
-                      onClick={() => handleDelete(event)}
+                      onClick={() => handleDelete(event, impact)}
                       disabled={deleting}
                     >
                       {deleting ? RU.items.history.deleting : RU.items.history.confirm}
