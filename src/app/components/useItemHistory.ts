@@ -22,7 +22,7 @@ async function fetchPage(itemId: string, cursor: HistoryCursor | null, signal: A
  * details sheet (/items) and the details page (/items/[id]).
  */
 export function useItemHistory(itemId: string) {
-  const [events, setEvents] = useState<ServiceEvent[]>([]);
+  const [events, setEventsState] = useState<ServiceEvent[]>([]);
   const [previousReplacement, setPreviousReplacement] = useState<ServiceEvent | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +33,25 @@ export function useItemHistory(itemId: string) {
   const moreControllerRef = useRef<AbortController | null>(null);
   // A reload invalidates pages that are still being fetched for the previous state.
   const generationRef = useRef(0);
+  // Synchronous mirrors for event handlers (removeEvent → load the next page).
+  const eventsRef = useRef<ServiceEvent[]>([]);
+  const hasMoreRef = useRef(false);
+  const busyRef = useRef<'reload' | 'more' | null>('reload');
+  /**
+   * Keyset cursor of the oldest record ever loaded in this generation. Kept when that
+   * record is deleted: "strictly older than the deleted record" is still exactly the
+   * next page, and it is the only cursor left once every loaded record is deleted.
+   */
+  const cursorRef = useRef<HistoryCursor | null>(null);
+
+  const setEvents = useCallback((next: ServiceEvent[]) => {
+    eventsRef.current = next;
+    setEventsState(next);
+  }, []);
+  const setMore = useCallback((next: boolean) => {
+    hasMoreRef.current = next;
+    setHasMore(next);
+  }, []);
 
   const reload = useCallback(async () => {
     controllerRef.current?.abort();
@@ -40,6 +59,7 @@ export function useItemHistory(itemId: string) {
     const controller = new AbortController();
     controllerRef.current = controller;
     const generation = ++generationRef.current;
+    busyRef.current = 'reload';
     setIsLoading(true);
     setIsLoadingMore(false);
     setError(null);
@@ -47,56 +67,72 @@ export function useItemHistory(itemId: string) {
     try {
       const page = await fetchPage(itemId, null, controller.signal);
       if (generation !== generationRef.current) return;
+      cursorRef.current = page.events.length ? cursorOf(page.events[page.events.length - 1]) : null;
       setEvents(page.events);
       setPreviousReplacement(page.previousReplacement);
-      setHasMore(page.hasMore);
+      setMore(page.hasMore);
     } catch (err) {
       if (generation !== generationRef.current || (err instanceof Error && err.name === 'AbortError')) return;
       setError(err instanceof Error ? err.message : LOAD_FAILED);
       if (process.env.NODE_ENV !== 'production') console.error('[useItemHistory] Failed to load history:', err);
     } finally {
-      if (generation === generationRef.current) setIsLoading(false);
+      if (generation === generationRef.current) {
+        busyRef.current = null;
+        setIsLoading(false);
+      }
     }
-  }, [itemId]);
+  }, [itemId, setEvents, setMore]);
 
   const loadMore = useCallback(async () => {
-    const oldest = events.at(-1);
+    const cursor = cursorRef.current;
     // Never page from a list that is being replaced: it could leave a gap.
-    if (!oldest || isLoading || isLoadingMore) return;
+    if (!cursor || !hasMoreRef.current || busyRef.current !== null) return;
     const controller = new AbortController();
     moreControllerRef.current = controller;
     const generation = generationRef.current;
+    busyRef.current = 'more';
     setIsLoadingMore(true);
     setLoadMoreFailed(false);
     try {
-      // Keyset cursor: everything strictly older than the last loaded record.
-      const page = await fetchPage(itemId, cursorOf(oldest), controller.signal);
+      // Keyset cursor: everything strictly older than the oldest record loaded so far.
+      const page = await fetchPage(itemId, cursor, controller.signal);
       if (generation !== generationRef.current) return;
-      setEvents((loaded) => mergeHistoryPages(loaded, page.events));
+      if (page.events.length) cursorRef.current = cursorOf(page.events[page.events.length - 1]);
+      setEvents(mergeHistoryPages(eventsRef.current, page.events));
       setPreviousReplacement(page.previousReplacement);
-      setHasMore(page.hasMore);
+      setMore(page.hasMore);
     } catch (err) {
       if (generation !== generationRef.current || (err instanceof Error && err.name === 'AbortError')) return;
       setLoadMoreFailed(true);
     } finally {
-      if (generation === generationRef.current) setIsLoadingMore(false);
+      if (generation === generationRef.current) {
+        busyRef.current = null;
+        setIsLoadingMore(false);
+      }
     }
-  }, [events, isLoading, isLoadingMore, itemId]);
+  }, [itemId, setEvents, setMore]);
 
   /**
    * Drops a deleted record locally, keeping the loaded pages. The loaded records stay a
-   * prefix of the history, so the next cursor and `previousReplacement` remain valid.
+   * prefix of the history, so the cursor and `previousReplacement` remain valid. When
+   * the last loaded record goes while older ones exist, the next page is loaded at once,
+   * so the remaining history is shown instead of an empty list.
    */
   const removeEvent = useCallback((eventId: string) => {
-    setEvents((loaded) => loaded.filter((event) => event.id !== eventId));
-  }, []);
+    const remaining = eventsRef.current.filter((event) => event.id !== eventId);
+    setEvents(remaining);
+    if (remaining.length === 0 && hasMoreRef.current) void loadMore();
+  }, [loadMore, setEvents]);
 
   useEffect(() => () => {
     controllerRef.current?.abort();
     moreControllerRef.current?.abort();
   }, []);
 
-  return { events, previousReplacement, hasMore, isLoading, error, isLoadingMore, loadMoreFailed, reload, loadMore, removeEvent };
+  /** Nothing loaded and nothing left on the server: the history is really empty. */
+  const isEmpty = events.length === 0 && !hasMore;
+
+  return { events, previousReplacement, hasMore, isEmpty, isLoading, error, isLoadingMore, loadMoreFailed, reload, loadMore, removeEvent };
 }
 
 export type ItemHistoryState = ReturnType<typeof useItemHistory>;

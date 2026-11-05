@@ -41,13 +41,21 @@ interface Reading { km: number; at: string | null }
 /**
  * One form for every kind of service record. The user first chooses what they did
  * (nothing is preselected), then fills the fields of that kind.
+ *
+ * The form body is mounted only while the form is open, so every opening starts from
+ * fresh state built by the `useState` initializers in the very first render. There is
+ * no reset effect: an effect runs after the form is already on screen and would undo a
+ * choice the user made before it ran (e.g. a kind picked right after a quick reopen).
  */
-export default function AddServiceEventForm({
+export default function AddServiceEventForm(props: AddServiceEventFormProps) {
+  return props.isOpen ? <AddServiceEventFormBody {...props} /> : null;
+}
+
+function AddServiceEventFormBody({
   serviceItemId,
   serviceItemTitle,
   defaultMileage,
   lastReadingAt = null,
-  isOpen,
   onClose,
   onSuccess,
 }: AddServiceEventFormProps) {
@@ -67,7 +75,9 @@ export default function AddServiceEventForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Latest recorded reading known to this form: from props, or from an odometer update
   // made from here (before the refreshed server data arrives).
-  const [lastReading, setLastReading] = useState<Reading | null>(null);
+  const [lastReading, setLastReading] = useState<Reading | null>(
+    () => (defaultMileage ? { km: defaultMileage, at: lastReadingAt } : null)
+  );
   const [isOdometerOpen, setIsOdometerOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const messageRef = useRef<HTMLDivElement>(null);
@@ -82,31 +92,15 @@ export default function AddServiceEventForm({
     if (dateEditing) dateInputRef.current?.focus();
   }, [dateEditing]);
 
-  useSwipeToClose<HTMLFormElement>(formRef, onClose, isOpen && !isOdometerOpen);
+  useSwipeToClose<HTMLFormElement>(formRef, onClose, !isOdometerOpen);
 
-  // Reset only when the form opens. A later props change (the odometer updated from this
-  // form refreshes the page) must keep what the user has entered.
+  // A later props change (the odometer updated from this form refreshes the page) keeps
+  // what the user has entered: a newer reading from the server only moves the baseline
+  // forward, and never touches the user's input.
   useEffect(() => {
-    if (!isOpen) return;
-    setKind(null);
-    setDate(toDateInputValue(new Date()));
-    setMileageKm('');
-    setMileageTouched(false);
-    setDateEditing(false);
-    setAmount('');
-    setNote('');
-    setError(null);
-    setNotice(null);
-    setIsOdometerOpen(false);
-    setLastReading(defaultMileage ? { km: defaultMileage, at: lastReadingAt } : null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
-  // A newer reading from the server only moves the baseline forward.
-  useEffect(() => {
-    if (!isOpen || !defaultMileage) return;
+    if (!defaultMileage) return;
     setLastReading((current) => (current && current.km >= defaultMileage ? current : { km: defaultMileage, at: lastReadingAt }));
-  }, [isOpen, defaultMileage, lastReadingAt]);
+  }, [defaultMileage, lastReadingAt]);
 
   // A date before the last odometer reading must not silently get that (later) reading's
   // mileage: the field stays empty until the user states the mileage for the chosen date.
@@ -210,10 +204,6 @@ export default function AddServiceEventForm({
       setIsSubmitting(false);
     }
   };
-
-  if (!isOpen) {
-    return null;
-  }
 
   const enteredMileage = parseMileageInput(mileageValue);
   const [readingBefore, readingAfter] = (isHistoricalDate ? copy.lastReadingHistorical : copy.lastReading)

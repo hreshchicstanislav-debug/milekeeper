@@ -22,15 +22,19 @@ ALTER TABLE public.service_events
   ADD CONSTRAINT service_events_kind_check
     CHECK (kind IN ('replacement', 'check', 'top_up')),
   -- A volume is optional, only meaningful for a top-up and positive. There is no
-  -- product limit: the upper bound (999.99) and the two decimals come from numeric(5,2).
+  -- product limit: the upper bound (999.99) comes from numeric(5,2), which rounds any
+  -- further decimals to two (0.001 becomes 0.00 and is then rejected as not positive).
+  -- numeric accepts the special value 'NaN', even with a typmod, and PostgreSQL sorts
+  -- NaN above every number, so `NaN > 0` is true: it must be excluded explicitly.
+  -- ('Infinity' cannot be stored in numeric(5,2); the type rejects it.)
   ADD CONSTRAINT service_events_amount_liters_check
     CHECK (amount_liters IS NULL
-           OR (kind = 'top_up' AND amount_liters > 0));
+           OR (kind = 'top_up' AND amount_liters > 0 AND amount_liters <> 'NaN'::numeric));
 
 COMMENT ON COLUMN public.service_events.kind IS
   'replacement starts a new interval; check and top_up are history records only';
 COMMENT ON COLUMN public.service_events.amount_liters IS
-  'Optional volume of a top_up, litres (value > 0; numeric(5,2) allows up to 999.99)';
+  'Optional volume of a top_up, litres (finite, > 0; numeric(5,2) allows up to 999.99)';
 
 -- The application does not call this RPC, but it exists in the database. Keep its
 -- signature and SECURITY INVOKER semantics (RLS applies) and make it return the last

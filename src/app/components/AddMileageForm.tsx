@@ -7,7 +7,7 @@ import ModalSheet from './ModalSheet';
 import { useState, useRef, useEffect } from 'react';
 import { addOdometerEntry } from '@/lib/actions/odometerActions';
 import { parseMileageInput, trimWhitespace } from '@/lib/utils/numberFormat';
-import { getAppMode, AppMode, isTestMode } from '@/lib/appMode';
+import { isTestMode } from '@/lib/appMode';
 import { getAppNow, setAppNow } from '@/lib/appNow';
 import { toDateTimeLocalValue, fromDateTimeLocalValue } from '@/lib/time/datetimeLocal';
 import { useSwipeToClose } from './useSwipeToClose';
@@ -35,21 +35,67 @@ interface AddMileageFormProps {
   returnFocusSelector?: string;
 }
 
+/**
+ * Odometer reading form. The sheet body is mounted only while open, so each opening
+ * starts from state built in its first render (prefilled reading, current time). No
+ * effect re-initializes it afterwards, which could overwrite what the user already typed.
+ */
 export default function AddMileageForm({
   buttonLabel, lastMileageKm = null, latestReadingAt = null,
   open, initialMileageKm = null, onClose, onSaved, returnFocusSelector = '[data-add-mileage-trigger]',
 }: AddMileageFormProps = {}) {
-  const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
+  const { RU } = useCopy();
   const controlled = open !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = controlled ? open : internalOpen;
-  const setIsOpen = (next: boolean) => {
-    if (!controlled) setInternalOpen(next);
-    else if (!next) onClose?.();
+  const close = () => {
+    if (!controlled) setInternalOpen(false);
+    else onClose?.();
   };
-  const [mileageKm, setMileageKm] = useState('');
-  const [appMode, setAppMode] = useState<AppMode>(AppMode.LIVE);
-  const [occurredAt, setOccurredAt] = useState(toDateTimeLocalValue(new Date()));
+
+  return (
+    <>
+      {!controlled && (
+        <button
+          type="button"
+          onClick={() => setInternalOpen(true)}
+          className="add-mileage-button"
+          data-add-mileage-trigger
+        >
+          {buttonLabel ?? RU.home.addMileage}
+        </button>
+      )}
+      {isOpen && (
+        <AddMileageSheet
+          lastMileageKm={lastMileageKm}
+          latestReadingAt={latestReadingAt}
+          initialMileageKm={controlled ? initialMileageKm : null}
+          onClose={close}
+          onSaved={onSaved}
+          returnFocusSelector={returnFocusSelector}
+        />
+      )}
+    </>
+  );
+}
+
+interface AddMileageSheetProps {
+  lastMileageKm: number | null;
+  latestReadingAt: string | null;
+  initialMileageKm: number | null;
+  onClose: () => void;
+  onSaved?: (entry: OdometerEntry) => void;
+  returnFocusSelector: string;
+}
+
+function AddMileageSheet({
+  lastMileageKm, latestReadingAt, initialMileageKm, onClose, onSaved, returnFocusSelector,
+}: AddMileageSheetProps) {
+  const { formatMileageInput, formatNumber, displayDateTime, RU, t, intlLocale, errorMessageText } = useCopy();
+  const setIsOpen = (next: boolean) => { if (!next) onClose(); };
+  const [mileageKm, setMileageKm] = useState(() => (initialMileageKm ? formatMileageInput(String(initialMileageKm)) : ''));
+  // TEST mode records at AppNow, LIVE mode at the browser time.
+  const [occurredAt, setOccurredAt] = useState(() => toDateTimeLocalValue(isTestMode() ? getAppNow() : new Date()));
   const [showDate, setShowDate] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
@@ -58,47 +104,21 @@ export default function AddMileageForm({
   const mileageInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Update mode and occurredAt when form opens or mode changes
-  useEffect(() => {
-    const currentMode = getAppMode();
-    setAppMode(currentMode);
-    
-    if (isTestMode()) {
-      // TEST mode: use AppNow
-      const appNow = getAppNow();
-      setOccurredAt(toDateTimeLocalValue(appNow));
-      setShowDate(false); // Hide date picker in TEST mode
-    } else {
-      // LIVE mode: use browser time
-      setOccurredAt(toDateTimeLocalValue(new Date()));
-    }
-  }, [isOpen]);
-
   // Update occurredAt when AppNow changes in TEST mode (e.g., after simulation)
   useEffect(() => {
-    if (isOpen && isTestMode()) {
+    if (isTestMode()) {
       const interval = setInterval(() => {
         const appNow = getAppNow();
         setOccurredAt(toDateTimeLocalValue(appNow));
       }, 1000); // Update every second to stay in sync with Test Clock
-      
+
       return () => clearInterval(interval);
     }
-  }, [isOpen]);
+  }, []);
 
   useEffect(() => {
-    if (isOpen && controlled && initialMileageKm) {
-      setMileageKm(formatMileageInput(String(initialMileageKm)));
-    }
-    // Only when the controlled form opens; later prop changes must not overwrite input.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && mileageInputRef.current) {
-      mileageInputRef.current.focus();
-    }
-  }, [isOpen]);
+    mileageInputRef.current?.focus();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,24 +215,12 @@ export default function AddMileageForm({
   };
 
   // Swipe-to-close gesture
-  useSwipeToClose<HTMLFormElement>(formRef, handleCancel, isOpen);
+  useSwipeToClose<HTMLFormElement>(formRef, handleCancel, true);
 
   // Recomputed on every keystroke; nothing is shown for empty, partial or invalid input.
   const gainPreview = previewEntryGain(mileageKm, lastMileageKm);
 
   return (
-    <>
-      {!controlled && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="add-mileage-button"
-          data-add-mileage-trigger
-        >
-          {buttonLabel ?? RU.home.addMileage}
-        </button>
-      )}
-      {isOpen && (
     <ModalSheet label={RU.mileageForm.title} onClose={handleCancel} busy={isSubmitting} returnFocusSelector={returnFocusSelector}>
       <form ref={formRef} onSubmit={handleSubmit} className="add-mileage-form">
         <div className="form-header">
@@ -351,7 +359,5 @@ export default function AddMileageForm({
         </div>
       </form>
     </ModalSheet>
-      )}
-    </>
   );
 }

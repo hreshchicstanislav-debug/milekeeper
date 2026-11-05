@@ -198,7 +198,7 @@ export default function ItemDetailsPageClient({
               <div className="item-history-loading">{t("Загрузка…")}</div>
             ) : historyState.error ? (
               <div className="item-history-error">{errorMessageText(historyState.error)}</div>
-            ) : history.length === 0 ? (
+            ) : historyState.isEmpty ? (
               <div className="item-history-empty">{RU.items.historyEmpty}</div>
             ) : (
               <ItemHistoryList

@@ -41,15 +41,61 @@ export interface ReplacementIntervalOptions<T extends HistoryEvent> {
   complete: boolean;
 }
 
+/** ISO 8601 / PostgreSQL `timestamptz` text: date, time, any fraction, explicit offset. */
+const NANOS_PER_MS = BigInt(1_000_000);
+const MS_PER_SECOND = BigInt(1000);
+const TIMESTAMP_PARTS = /^(\d{4,})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}(?::?\d{2}(?::?\d{2})?)?)$/i;
+
+/**
+ * Exact instant of a timestamp string in nanoseconds since the epoch, or `null`.
+ *
+ * `Date.parse` keeps milliseconds only, while PostgreSQL stores microseconds: records a
+ * few microseconds apart would compare as equal and fall back to the mileage, i.e. into
+ * a different order than the database's `ORDER BY occurred_at`. Every digit of the
+ * fraction is kept here. Strings without an explicit offset (never produced by the API)
+ * fall back to `Date.parse`.
+ */
+export function timestampNanos(value: string): bigint | null {
+  const match = TIMESTAMP_PARTS.exec(value);
+  if (!match) {
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : BigInt(ms) * NANOS_PER_MS;
+  }
+  const [, year, month, day, hour, minute, second, fraction = '', zone] = match;
+  const date = new Date(0);
+  // setUTCFullYear, unlike Date.UTC, does not map years 0–99 to 1900–1999.
+  date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+  date.setUTCHours(Number(hour), Number(minute), Number(second), 0);
+  const ms = date.getTime();
+  if (Number.isNaN(ms)) return null;
+  let offsetSeconds = 0;
+  if (zone.toUpperCase() !== 'Z') {
+    const [h = '0', m = '0', s = '0'] = zone.slice(1).match(/\d{2}/g) ?? [];
+    offsetSeconds = (zone[0] === '-' ? -1 : 1) * (Number(h) * 3600 + Number(m) * 60 + Number(s));
+  }
+  return (BigInt(ms) - BigInt(offsetSeconds) * MS_PER_SECOND) * NANOS_PER_MS + BigInt(fraction.padEnd(9, '0'));
+}
+
+/** Like PostgreSQL's `timestamptz` comparison: negative, 0 or positive. */
+export function compareTimestamps(a: string, b: string): number {
+  const x = timestampNanos(a);
+  const y = timestampNanos(b);
+  if (x === null || y === null) return 0;
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
 /**
  * Oldest first: `occurred_at ASC, mileage_km ASC, id ASC` (stable for equal timestamps).
- * The exact reverse of the API order `occurred_at DESC, mileage_km DESC, id DESC`.
+ * The exact reverse of the API order `occurred_at DESC, mileage_km DESC, id DESC`,
+ * including microseconds (see `timestampNanos`) and the uuid order of PostgreSQL.
  */
 export function compareOldestFirst(a: HistoryEvent, b: HistoryEvent): number {
-  const delta = Date.parse(a.occurred_at) - Date.parse(b.occurred_at);
-  if (delta !== 0 && !Number.isNaN(delta)) return delta;
+  const delta = compareTimestamps(a.occurred_at, b.occurred_at);
+  if (delta !== 0) return delta;
   if (a.mileage_km !== b.mileage_km) return a.mileage_km - b.mileage_km;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  const x = a.id.toLowerCase();
+  const y = b.id.toLowerCase();
+  return x < y ? -1 : x > y ? 1 : 0;
 }
 
 /** Interval for every event, keyed by event id. Input order does not matter. */

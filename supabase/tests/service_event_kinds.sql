@@ -94,6 +94,40 @@ SELECT kinds_test.expect_error($sql$
   INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
   VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 0.001)
 $sql$, '23514', 'volume that rounds to zero is rejected');
+-- numeric accepts 'NaN' even with a typmod, and NaN > 0 is true in PostgreSQL.
+SELECT kinds_test.assert('NaN'::numeric(5, 2) > 0, 'precondition: NaN fits numeric(5,2) and compares above 0');
+SELECT kinds_test.expect_error($sql$
+  INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 'NaN')
+$sql$, '23514', 'NaN volume rejected');
+SELECT kinds_test.expect_error($sql$
+  INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 'nan'::numeric)
+$sql$, '23514', 'NaN volume rejected (any spelling, explicit cast)');
+SELECT kinds_test.expect_error($sql$
+  UPDATE public.service_events SET kind = 'top_up', amount_liters = 'NaN'
+  WHERE id = '30000000-0000-0000-0000-000000000012'
+$sql$, '23514', 'NaN volume rejected on update');
+SELECT kinds_test.expect_error($sql$
+  INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 'Infinity')
+$sql$, '22003', 'Infinity volume rejected by the column type');
+SELECT kinds_test.expect_error($sql$
+  INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+  VALUES ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 999.995)
+$sql$, '22003', 'volume that rounds above 999.99 is rejected by the column type');
+-- numeric(5,2) rounds extra decimals instead of rejecting them (rolled back below).
+SAVEPOINT rounded_volumes;
+INSERT INTO public.service_events (id, user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
+VALUES ('41000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', NULL),
+       ('41000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 0.5),
+       ('41000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 999.99),
+       ('41000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 0.005),
+       ('41000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', now(), 4000, 'top_up', 999.994);
+SELECT kinds_test.assert((SELECT array_agg(amount_liters::text ORDER BY id) = ARRAY[NULL, '0.50', '999.99', '0.01', '999.99']
+  FROM public.service_events WHERE id::text LIKE '41000000%'),
+  'NULL, 0.5 and 999.99 accepted; 0.005 and 999.994 are rounded to two decimals by the type');
+ROLLBACK TO SAVEPOINT rounded_volumes;
 -- No arbitrary product limit: 100 and the type maximum 999.99 are accepted (rolled back below).
 SAVEPOINT large_volumes;
 INSERT INTO public.service_events (user_id, service_item_id, occurred_at, mileage_km, kind, amount_liters)
@@ -230,4 +264,21 @@ SELECT kinds_test.assert((SELECT count(*) = 0 FROM public.service_events), 'anon
 WITH changed AS (DELETE FROM public.service_events RETURNING *)
 SELECT kinds_test.assert((SELECT count(*) = 0 FROM changed), 'anonymous cannot delete records');
 RESET ROLE;
+
+-- 9. History order keeps microseconds (src/lib/service/historyPage.ts relies on it; the
+-- same rows are checked in historyPage.test.ts). A is newest by 0.1 ms but has the lowest
+-- mileage: millisecond precision would sort these rows by mileage, i.e. C, B, A.
+SET LOCAL TimeZone = 'UTC';  -- as PostgREST on Supabase
+INSERT INTO public.service_events (id, user_id, service_item_id, occurred_at, mileage_km, kind)
+VALUES ('42000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', '2030-07-01 09:00:00.123900+00', 1000, 'check'),
+       ('42000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', '2030-07-01 09:00:00.123800+00', 2000, 'check'),
+       ('42000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', '2030-07-01 09:00:00.123700+00', 3000, 'check');
+SELECT kinds_test.assert((SELECT array_agg(right(id::text, 1) ORDER BY occurred_at DESC, mileage_km DESC, id DESC) = ARRAY['a', 'b', 'c']
+  FROM public.service_events WHERE id::text LIKE '42000000%'), 'history order uses microseconds: A, B, C');
+SELECT kinds_test.assert((SELECT array_agg(right(id::text, 1) ORDER BY occurred_at DESC) = ARRAY['b', 'c']
+  FROM public.service_events WHERE id::text LIKE '42000000%' AND occurred_at < '2030-07-01T09:00:00.1239+00:00'),
+  'keyset filter on the JSON timestamp of A returns B, C');
+SELECT kinds_test.assert((SELECT to_json(occurred_at)::text = '"2030-07-01T09:00:00.1239+00:00"'
+  FROM public.service_events WHERE id = '42000000-0000-0000-0000-00000000000a'),
+  'JSON timestamp text (as PostgREST returns it) keeps the microseconds');
 ROLLBACK;

@@ -2,13 +2,20 @@
 const { chromium } = require(process.env.MILEKEEPER_PLAYWRIGHT_PATH || 'playwright');
 const fs = require('fs'), assert = require('assert/strict'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
-const { createFixture } = require('./fixtures/i18n-supabase.cjs');
+const { createFixture, timeKey } = require('./fixtures/i18n-supabase.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-service-records-'));
 let browser, app, fixture, page;
 
+/** Database order, oldest first: occurred_at (microseconds), mileage_km, id. */
+const compareOldestFirst = (a, b) => {
+  const x = timeKey(a.occurred_at), y = timeKey(b.occurred_at);
+  return x < y ? -1 : x > y ? 1 : a.mileage_km - b.mileage_km || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+};
+const newestFirstIds = events => [...events].sort((a, b) => compareOldestFirst(b, a)).map(e => e.id);
+
 /** Expected "mileage between replacements" for every replacement, from the full fixture history. */
 function expectedIntervals(events) {
-  const oldestFirst = [...events].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at) || a.mileage_km - b.mileage_km || (a.id < b.id ? -1 : 1));
+  const oldestFirst = [...events].sort(compareOldestFirst);
   const result = new Map(); let previous = null;
   for (const event of oldestFirst) {
     if (event.kind !== 'replacement') { result.set(event.id, null); continue; }
@@ -57,6 +64,30 @@ function expectedIntervals(events) {
     }).map(el => el.textContent));
     assert.deepEqual(broken, [], 'Kind title wrapped or clipped: ' + label);
   };
+  /**
+   * A fast user: the second tap (or keystroke) lands on the very first committed render
+   * of a form, in the same task as the tap that opened it. That render must already show
+   * the form's initial state (not the previous opening's), and nothing may re-initialize
+   * the form afterwards. Returns what that first render showed. Microtask yields only
+   * until the target exists; no timers.
+   */
+  const tapThenAct = (opener, action) => page.evaluate(async ({ opener, action }) => {
+    document.querySelector(opener).click();
+    for (let i = 0; i < 1000 && !document.querySelector(action.selector); i++) await Promise.resolve();
+    const target = document.querySelector(action.selector);
+    if (!target) return null;
+    const dialog = target.closest('dialog');
+    const firstRender = {
+      checked: [...dialog.querySelectorAll('input[type="radio"]:checked')].map(radio => radio.value),
+      fields: Object.fromEntries([...dialog.querySelectorAll('input[id], textarea[id]')].map(field => [field.id, field.value])),
+    };
+    if (action.value === undefined) target.click();
+    else {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(target, action.value);
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    return firstRender;
+  }, { opener, action });
   /** The element is fully visible in the form without scrolling (above the action buttons). */
   const assertVisibleWithoutScrolling = async (selector, label) => {
     const result = await page.evaluate((sel) => {
@@ -106,6 +137,8 @@ function expectedIntervals(events) {
     const shown = await rows().evaluateAll(list => list.map(li => ({ id: li.dataset.eventId, kind: li.dataset.kind, interval: li.querySelector('[data-interval]')?.dataset.interval ?? null })));
     assert.equal(new Set(shown.map(r => r.id)).size, 23, 'Duplicated records');
     assert.deepEqual(new Set(shown.map(r => r.id)), new Set(all.map(e => e.id)), 'Lost records');
+    // Exactly the database order, including the records microseconds apart at the page boundary.
+    assert.deepEqual(shown.map(r => r.id), newestFirstIds(all), 'History order differs from the database order');
     const expected = expectedIntervals(all);
     for (const row of shown) assert.equal(row.interval, expected.get(row.id), 'Interval of ' + row.id);
     await noOverflow('history'); await shot(locale + '-history-390');
@@ -263,6 +296,50 @@ function expectedIntervals(events) {
     assert.equal(fixture.odometer.length, odometerCount + 1, 'Deleting changed the odometer');
     console.log(`PASS ${locale}: deleted a check (forecast unchanged) and the last replacement (recomputed: ${after})`);
 
+    // 6b. Fast taps: a kind chosen right after opening, a reopen, switching kinds, the odometer
+    // form opened from the record and typed into at once, and the way back with the input kept.
+    await page.goto(itemUrl); await rows().first().waitFor();
+    let firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
+    assert.deepEqual(firstRender?.checked, [], 'Record form did not open fresh');
+    dialog = page.getByRole('dialog').last();
+    await dialog.getByLabel(L.volume).waitFor();
+    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after opening was reset');
+    await dialog.getByLabel(L.volume).fill('0,75');
+    await dialog.getByLabel(L.mileage).fill('999999');
+    await dialog.getByLabel(L.comment).fill('Быстрый ввод');
+    await dialog.getByRole('radio', { name: L.check }).check();
+    await dialog.getByRole('radio', { name: L.topUp }).check();
+    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999', 'Switching kinds lost the mileage');
+    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75', 'Switching kinds lost the volume');
+    await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
+    await dialog.getByText(L.above).waitFor();
+    // The odometer form opens prefilled with 999 999; a reading typed at once must stay.
+    firstRender = await tapThenAct('dialog[open] .service-event-update-odometer', { selector: 'dialog[open] #mileageKm', value: '100000' });
+    assert.equal(firstRender?.fields.mileageKm.replace(/\D/g, ''), '999999', 'Odometer form not prefilled in its first render');
+    const fastOdometer = page.getByRole('dialog', { name: L.odometerTitle });
+    await fastOdometer.locator('#mileageGainPreview[data-gain="not-greater"]').waitFor();
+    assert.equal((await fastOdometer.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '100000', 'Odometer form overwrote the typed reading');
+    await fastOdometer.locator('.cancel-button').click();
+    await fastOdometer.waitFor({ state: 'detached' });
+    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true);
+    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999');
+    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75');
+    assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'Быстрый ввод');
+    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+    // Quick reopen, choosing the same kind again: the first render must be fresh (the
+    // previous choice still checked there would swallow the tap, and a later reset clear it).
+    firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
+    assert.deepEqual(firstRender, { checked: [], fields: {} }, 'Reopened form first rendered the previous input: ' + JSON.stringify(firstRender));
+    dialog = page.getByRole('dialog').last();
+    await dialog.getByLabel(L.volume).waitFor();
+    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after reopening was lost');
+    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '', 'Reopened form kept the old volume');
+    assert.equal(await dialog.getByLabel(L.comment).inputValue(), '', 'Reopened form kept old input');
+    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500', 'Reopened form not prefilled with the last reading');
+    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+    assert.equal(fixture.odometer.length, odometerCount + 1, 'Cancelled odometer form wrote a reading');
+    console.log(`PASS ${locale}: fast taps — kind kept after open and reopen, odometer input kept, record input kept on return`);
+
     // 7. Mobile widths: kind segments, volume position, delete confirmation.
     for (const [width, height] of [[320, 568], [390, 844]]) {
       await page.setViewportSize({ width, height });
@@ -286,7 +363,8 @@ function expectedIntervals(events) {
       await trigger.click();
       const confirm = last.locator('.item-history-confirm');
       await confirm.waitFor();
-      await page.waitForTimeout(150);
+      // Focus moves to Cancel in the same effect that scrolls the confirmation into view.
+      await page.waitForFunction((label) => document.activeElement?.textContent === label, L.cancel);
       const geometry = await page.evaluate(() => {
         const box = document.querySelector('.item-history-confirm').getBoundingClientRect();
         const buttons = [...document.querySelectorAll('.item-history-confirm-actions button')].map(b => b.getBoundingClientRect());
@@ -327,6 +405,43 @@ function expectedIntervals(events) {
       const text = (await page.locator('.item-details-page').innerText()).replace(/Моё масло двигателя|Уровень в норме|После трассы/g, '');
       assert(!/[А-Яа-яЁё]/.test(text), 'Untranslated item page text: ' + text.match(/[А-Яа-яЁё][^\n]*/)?.[0]);
     }
+    // 8. Deleting every loaded record while older ones exist: the rest appears, never "empty".
+    fixture.setScenario('mixed');
+    await page.goto(itemUrl); await rows().first().waitFor();
+    const order = newestFirstIds(fixture.events);
+    assert.deepEqual(await rows().evaluateAll(list => list.map(li => li.dataset.eventId)), order.slice(0, 10));
+    for (const id of order.slice(0, 10)) {
+      const row = page.locator(`[data-event-id="${id}"]`);
+      await row.locator('.item-history-delete').click();
+      await row.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+      await row.waitFor({ state: 'detached' });
+    }
+    await page.waitForFunction(() => document.querySelectorAll('.item-history-row').length === 10);
+    assert.equal(fixture.events.length, 13);
+    assert.equal(await page.locator('.item-history-empty').count(), 0, 'History shown as empty while 13 records remain');
+    assert.deepEqual(await rows().evaluateAll(list => list.map(li => li.dataset.eventId)), order.slice(10, 20));
+    await page.getByRole('button', { name: L.more, exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.item-history-row').length === 13);
+    assert.deepEqual(await rows().evaluateAll(list => list.map(li => li.dataset.eventId)), order.slice(10));
+    const remainingIntervals = expectedIntervals(fixture.events);
+    for (const row of await rows().evaluateAll(list => list.map(li => ({ id: li.dataset.eventId, interval: li.querySelector('[data-interval]')?.dataset.interval ?? null })))) {
+      assert.equal(row.interval, remainingIntervals.get(row.id), 'Interval after deleting a page: ' + row.id);
+    }
+    await noOverflow('history after deleting a page'); await shot(locale + '-history-after-page-deleted');
+    // The last visible record of the second page, then "Show more": no gap, no duplicate.
+    fixture.setScenario('mixed');
+    await page.goto(itemUrl); await rows().first().waitFor();
+    await page.getByRole('button', { name: L.more, exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.item-history-row').length === 20);
+    const lastOfSecond = page.locator(`[data-event-id="${order[19]}"]`);
+    await lastOfSecond.locator('.item-history-delete').click();
+    await lastOfSecond.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+    await lastOfSecond.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: L.more, exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.item-history-row').length === 22);
+    assert.deepEqual(await rows().evaluateAll(list => list.map(li => li.dataset.eventId)), order.filter(id => id !== order[19]));
+    console.log(`PASS ${locale}: deleting the loaded page shows the remaining 13 records; deleting the last record of page 2 leaves no gap`);
+
     await page.setViewportSize({ width: 390, height: 844 });
     await context.clearCookies(); await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     console.log(`PASS ${locale}: 320/390 layouts without overflow; items list → item timeline`);

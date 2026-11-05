@@ -3,9 +3,16 @@ const http = require('http');
 const crypto = require('crypto');
 /** Minimal PostgREST semantics for the filters the app sends (eq, lt, in, order, limit). */
 const timeColumns = new Set(['occurred_at', 'created_at']);
-function cell(row, column) { return timeColumns.has(column) ? Date.parse(row[column]) : row[column]; }
+/** Exact instant (BigInt ns) like PostgreSQL's timestamptz: microseconds count, Date.parse alone keeps ms. */
+function timeKey(text) {
+    const match = /^(.*T?\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}(?::?\d{2})?)$/i.exec(String(text));
+    if (!match) return BigInt(Date.parse(text)) * 1000000n;
+    return BigInt(Date.parse(match[1] + match[3])) * 1000000n + BigInt((match[2] || '').padEnd(9, '0'));
+}
+exports.timeKey = timeKey;
+function cell(row, column) { return timeColumns.has(column) ? timeKey(row[column]) : row[column]; }
 function operand(row, column, raw) {
-    if (timeColumns.has(column)) return Date.parse(raw);
+    if (timeColumns.has(column)) return timeKey(raw);
     return typeof row[column] === 'number' ? Number(raw) : raw;
 }
 function applyQuery(rows, params) {
@@ -14,7 +21,7 @@ function applyQuery(rows, params) {
         if (['select', 'order', 'limit', 'offset', 'columns'].includes(column)) continue;
         const dot = expression.indexOf('.');
         const op = expression.slice(0, dot), raw = expression.slice(dot + 1);
-        if (op === 'eq') data = data.filter(r => (timeColumns.has(column) ? cell(r, column) === Date.parse(raw) : String(r[column]) === raw));
+        if (op === 'eq') data = data.filter(r => (timeColumns.has(column) ? cell(r, column) === timeKey(raw) : String(r[column]) === raw));
         else if (op === 'lt') data = data.filter(r => cell(r, column) < operand(r, column, raw));
         else if (op === 'in') { const values = raw.replace(/^\(|\)$/g, '').split(',').map(v => v.replace(/^"|"$/g, '')); data = data.filter(r => values.includes(String(r[column]))); }
     }
@@ -60,13 +67,19 @@ exports.createFixture = function createFixture(options = {}) {
     let odometer = Array.from({ length: 10 }, (_, i) => ({ id: `reading-${i}`, user_id: uid, mileage_km: 120000 - i * 500, occurred_at: new Date(Date.now() - i * 7 * 86400000).toISOString(), note: i === 0 ? 'Личная запись' : null, created_at: new Date(Date.now() - i * 7 * 86400000).toISOString() }));
     let events = [{ id: '00000000-0000-4000-8000-0000000000e1', user_id: uid, service_item_id: id, mileage_km: 112000, occurred_at: '2026-07-01T09:00:00Z', created_at: '2026-07-01T09:00:00Z', note: 'Пользовательский комментарий', kind: 'replacement', amount_liters: null }];
     const original = { items, odometer, events };
-    /** 23 records of all kinds, with equal dates and mileages, for paging and intervals. */
+    /**
+     * 23 records of all kinds, with equal dates and mileages, for paging and intervals.
+     * Records 13–15 (the end of the first page) are microseconds apart in the opposite
+     * order of their mileage, as PostgREST returns them: a millisecond comparison would
+     * reorder them by mileage and skip or repeat records between pages.
+     */
+    const microsecondTimes = { 13: '2026-02-26T09:00:00.0003+00:00', 14: '2026-02-26T09:00:00.0002+00:00', 15: '2026-02-26T09:00:00.0001+00:00' };
     const mixedEvents = () => Array.from({ length: 23 }, (_, i) => {
         const kind = i % 5 === 0 ? 'replacement' : i % 2 ? 'check' : 'top_up';
         const day = 1 + Math.floor(i / 2);
         return { id: `00000000-0000-4000-8000-${String(100 + i).padStart(12, '0')}`, user_id: uid, service_item_id: id, kind,
             amount_liters: kind === 'top_up' ? 0.25 * (1 + (i % 3)) : null, mileage_km: 100000 + day * 400,
-            occurred_at: new Date(Date.UTC(2026, 0, day * 7, 9)).toISOString(), created_at: '2026-01-01T00:00:00Z',
+            occurred_at: microsecondTimes[i] ?? new Date(Date.UTC(2026, 0, day * 7, 9)).toISOString(), created_at: '2026-01-01T00:00:00Z',
             note: kind === 'check' && i % 3 === 0 ? 'Уровень в норме' : null };
     });
     let authScenario = 'ok', generation = 0;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildItemHistory,
+  compareTimestamps,
+  timestampNanos,
   computeReplacementIntervals,
   mergeHistoryPages,
   type HistoryEvent,
@@ -140,5 +142,41 @@ describe('buildItemHistory (pages + previous replacement)', () => {
     const a = ev('a', t, 100000), b = ev('b', t, 100000), c = ev('c', '2026-03-01T00:00:00Z', 99000);
     expect(mergeHistoryPages([b, a], [a, c]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
     expect(mergeHistoryPages([], [c, b, a]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('timestamps with database precision', () => {
+  it('keeps every digit of the fraction (Date.parse keeps milliseconds only)', () => {
+    expect(Date.parse('2030-07-01T09:00:00.1239+00:00')).toBe(Date.parse('2030-07-01T09:00:00.1237+00:00'));
+    expect(compareTimestamps('2030-07-01T09:00:00.1239+00:00', '2030-07-01T09:00:00.1237+00:00')).toBeGreaterThan(0);
+    expect(compareTimestamps('2030-07-01T09:00:00.000001Z', '2030-07-01T09:00:00Z')).toBeGreaterThan(0);
+    expect(timestampNanos('2030-07-01T09:00:00.000001Z')! - timestampNanos('2030-07-01T09:00:00Z')!).toBe(BigInt(1000));
+  });
+
+  it('compares instants, not text: trailing zeros, Z and offsets', () => {
+    const base = timestampNanos('2030-07-01T09:00:00.1239+00:00');
+    for (const same of [
+      '2030-07-01T09:00:00.123900+00:00', '2030-07-01T09:00:00.1239Z', '2030-07-01 09:00:00.1239+00',
+      '2030-07-01T14:30:00.1239+05:30', '2030-07-01T14:30:00.1239+0530', '2030-07-01T04:00:00.1239-05:00',
+      '2030-07-02T00:00:00.1239+15:00',
+    ]) expect(timestampNanos(same), same).toBe(base);
+    // Microseconds survive dates far from the epoch.
+    expect(compareTimestamps('1999-12-31T23:59:59.999999Z', '2000-01-01T00:00:00Z')).toBeLessThan(0);
+  });
+
+  it('agrees with Date.parse to the millisecond', () => {
+    for (const text of ['2026-03-29T01:30:00.000Z', '2026-11-05T08:00:00+05:00', '2026-01-01T00:00:00.5-03:00']) {
+      expect(timestampNanos(text), text).toBe(BigInt(Date.parse(text)) * BigInt(1_000_000));
+    }
+  });
+
+  it('does not depend on the time zone of the process', () => {
+    // The suite also runs with TZ=Asia/Almaty; only explicit offsets are used here.
+    expect(timestampNanos('2030-07-01T09:00:00Z')).toBe(BigInt(Date.UTC(2030, 6, 1, 9)) * BigInt(1_000_000));
+  });
+
+  it('unparsable timestamps tie instead of throwing', () => {
+    expect(timestampNanos('yesterday')).toBeNull();
+    expect(compareTimestamps('yesterday', '2030-07-01T09:00:00Z')).toBe(0);
   });
 });
