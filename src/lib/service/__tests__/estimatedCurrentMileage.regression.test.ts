@@ -55,6 +55,8 @@ const lastEvent: ServiceEvent = {
   occurred_at: new Date(2026, 0, 1, 12, 0, 0).toISOString(),
   mileage_km: 460000,
   note: null,
+  kind: 'replacement',
+  amount_liters: null,
   created_at: new Date(2026, 0, 1, 12, 0, 0).toISOString(),
 };
 

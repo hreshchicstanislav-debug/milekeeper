@@ -3,6 +3,7 @@ const { chromium } = require(process.env.MILEKEEPER_PLAYWRIGHT_PATH || 'playwrig
 const fs = require('fs'), assert = require('assert/strict'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
 const { createFixture } = require('./fixtures/i18n-supabase.cjs');
+const { chooseReplacement } = require('./fixtures/creatable-kinds.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-i18n-'));
 let browser, dev, fixture;
 (async () => {
@@ -250,8 +251,8 @@ let browser, dev, fixture;
             assert.equal(await page.evaluate(key => localStorage.getItem(key), welcomeKey), 'seen');
             assert(!providerMethods.slice(methodsStart).some(r => r.path === '/auth/v1/logout' || (r.path.startsWith('/rest/v1/') && r.method !== 'GET')), 'Exit signed out or wrote demo data');
             if (authenticated) {
-                await page.locator('.mileage-date').waitFor();
-                assert.match(await page.locator('.mileage-date').innerText(), en ? /120,000 km/ : /120\s000 км/, 'Account must show its existing 120000 km measurement');
+                await page.locator('.mileage-date:not(.mileage-gain)').waitFor();
+                assert.match(await page.locator('.mileage-date:not(.mileage-gain)').innerText(), en ? /120,000 km/ : /120\s000 км/, 'Account must show its existing 120000 km measurement');
                 const authCookies = cookies => cookies.filter(c => ['mk_sb_at', 'mk_sb_rt'].includes(c.name)).map(c => ({ name: c.name, value: c.value })).sort((a, b) => a.name.localeCompare(b.name));
                 assert.equal(authCookies(beforeCookies).length, 2, 'Fixture account session absent');
                 assert.deepEqual(authCookies(await context.cookies()), authCookies(beforeCookies), 'Exit replaced the existing account session');
@@ -420,14 +421,14 @@ let browser, dev, fixture;
             addMileage: 'Add odometer reading', mileage: 'Enter odometer reading', save: 'Save', cancel: 'Cancel',
             mileageError: 'Please enter a valid odometer reading', addItem: 'Add item', itemName: 'For example: Engine oil',
             intervalError: 'Mileage tracking requires an interval in km.', editReading: 'Edit latest reading', positiveError: 'The odometer reading must be a positive number',
-            deleteReading: 'Delete latest reading', confirmDelete: 'Are you sure?', replacement: 'Record replacement', signOut: 'Sign out',
+            deleteReading: 'Delete latest reading', confirmDelete: 'Are you sure?', replacement: 'Add record', replacementKind: /^Replacement/, saveReplacement: 'Save replacement', signOut: 'Sign out',
             signIn: 'Sign in', google: 'Continue with Google', calc: 'Calculation',
         } : {
             home: 'Главная', items: 'Элементы обслуживания', history: 'История пробега',
             addMileage: 'Добавить пробег', mileage: 'Введите пробег', save: 'Сохранить', cancel: 'Отмена',
             mileageError: 'Пожалуйста, введите корректный пробег', addItem: 'Добавить элемент', itemName: 'Например: Масло двигателя',
             intervalError: 'Для режима по пробегу нужен интервал в км.', editReading: 'Редактировать последнюю запись', positiveError: 'Пробег должен быть положительным числом',
-            deleteReading: 'Удалить последнюю запись', confirmDelete: 'Вы уверены?', replacement: 'Отметить замену', signOut: 'Выйти',
+            deleteReading: 'Удалить последнюю запись', confirmDelete: 'Вы уверены?', replacement: 'Добавить запись', replacementKind: /^Замена/, saveReplacement: 'Сохранить замену', signOut: 'Выйти',
             signIn: 'Вход', google: 'Войти через Google', calc: 'Расчёт',
         };
         for (const width of [320, 390, 1280]) {
@@ -468,8 +469,9 @@ let browser, dev, fixture;
         await page.goto('http://localhost:3101' + prefix + '/items/' + fixture.id + '?tab=calc');
         await page.getByRole('button', { name: labels.calc, exact: true }).waitFor();
         await page.getByRole('button', { name: labels.replacement, exact: true }).click();
+        await chooseReplacement(dialog, labels.replacementKind);
         await dialog.getByPlaceholder(labels.mileage).fill('0');
-        await dialog.getByRole('button', { name: labels.save, exact: true }).click();
+        await dialog.getByRole('button', { name: labels.saveReplacement, exact: true }).click();
         await dialog.getByText(labels.positiveError, { exact: true }).waitFor();
         await checkLayout();
         if (en) await checkEnglish();

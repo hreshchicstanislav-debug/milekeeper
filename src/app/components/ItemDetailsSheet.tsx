@@ -6,10 +6,11 @@ import ModalSheet from './ModalSheet';
 
 import { useState, useEffect, useRef } from 'react';
 import { LocalDateTime } from '@/app/components/LocalDateTime';
-import type { ServiceItem, ServiceEvent } from '@/lib/db/types';
-import MarkReplacementButton from './MarkReplacementButton';
+import type { ServiceItem, ServiceEvent, ServiceEventKind } from '@/lib/db/types';
+import AddServiceRecordButton from './AddServiceRecordButton';
 import ItemHistoryList from './ItemHistoryList';
-import { ITEM_HISTORY_FETCH_LIMIT } from '@/lib/service/replacementIntervals';
+import { useItemHistory } from './useItemHistory';
+import { findLastReplacement } from '@/lib/service/serviceEventKinds';
 import { calcServiceStatus } from '@/lib/service/calcServiceStatus';
 import type { EstimatedOdometerResult } from '@/lib/service/estimatedOdometer';
 import { useToast } from './ToastProvider';
@@ -222,12 +223,9 @@ export default function ItemDetailsSheet({
 }: ItemDetailsSheetProps) {
   const { RU, t, formatNumber, formatServiceTimeFromSignedDays, systemText, errorMessageText } = useCopy();
   const toast = useToast();
-  const [history, setHistory] = useState<ServiceEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const historyState = useItemHistory(item.id);
+  const history = historyState.events;
   const [activeTab, setActiveTab] = useState<'history' | 'calc'>('history');
-  const lastLoadedKeyRef = useRef<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
   const itemHistoryRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
@@ -236,86 +234,10 @@ export default function ItemDetailsSheet({
   // Swipe-to-close gesture
   useSwipeToClose<HTMLDivElement>(modalContentRef, onClose, true);
 
-  const loadHistory = async (force = false) => {
-    // One record more than shown: it supplies the predecessor of the oldest visible row.
-    const limit = ITEM_HISTORY_FETCH_LIMIT;
-    const key = `${item.id}:${limit}`;
-
-    // Guard against fetch-loop: skip if already loaded (unless forced)
-    if (!force && lastLoadedKeyRef.current === key) {
-      return;
-    }
-
-    // Cancel previous request if any
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    // Create new AbortController for this request
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `/api/service-events?itemId=${encodeURIComponent(item.id)}&limit=${limit}`,
-        {
-          cache: 'no-store',
-          signal: abortController.signal,
-        }
-      );
-
-      // Check if request was aborted
-      if (abortController.signal.aborted) {
-        return;
-      }
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (!data.ok) {
-        throw new Error(data.error || 'Failed to load history');
-      }
-
-      setHistory(data.events || []);
-      lastLoadedKeyRef.current = key;
-    } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
-
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : RU.items.historyLoadError || t("Не удалось загрузить историю");
-      setError(errorMessage);
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('[ItemDetailsSheet] Failed to load history:', err);
-      }
-    } finally {
-      // Only update loading state if request wasn't aborted
-      if (!abortController.signal.aborted) {
-        setIsLoading(false);
-      }
-    }
-  };
-
+  const { reload: reloadHistory } = historyState;
   useEffect(() => {
-    loadHistory();
-    // Cleanup: abort request on unmount or item change
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id]);
+    reloadHistory();
+  }, [reloadHistory]);
 
   // Removed duplicate body scroll lock - already handled above at line 223
 
@@ -350,27 +272,27 @@ export default function ItemDetailsSheet({
   }, [item.id]);
 
   const handleRefresh = () => {
-    loadHistory(true); // Force reload
+    historyState.reload();
     if (onRefresh) onRefresh();
   };
 
-  const handleMarkReplacementSuccess = () => {
+  const handleRecordSuccess = (kind: ServiceEventKind) => {
     // Manual test checklist (smoke test):
     // 1. Open item details sheet
-    // 2. Tap "Отметить замену"
+    // 2. Tap "Добавить запись", choose a kind
     // 3. Fill form and submit
-    // 4. ✅ Toast appears centered with "Готово" / "Замена сохранена"
+    // 4. ✅ Toast appears centered with "Готово" / kind-specific subtitle
     // 5. ✅ Sheet closes automatically
-    // 6. ✅ /items list shows updated "Последняя замена" (no manual reload)
-    // 7. ✅ Home "Скоро замена" recalculates (item may disappear or move)
+    // 6. ✅ /items list shows "Последняя замена" (changes for replacements only)
+    // 7. ✅ Home "Скоро замена" recalculates (only after a replacement)
     // 8. ✅ No double refresh loops (router.refresh called once)
     // 9. ✅ Rapid taps create only one event (button disabled while submitting)
-    
+
     // Show toast first (before closing sheet to ensure it's called)
     // Toast provider is global, so it will persist even if sheet unmounts
     toast.success({
       title: t("Готово"),
-      subtitle: t("Замена отмечена"),
+      subtitle: RU.items.serviceEvent.saved[kind],
       durationMs: 2000,
     });
     
@@ -383,6 +305,16 @@ export default function ItemDetailsSheet({
     handleRefresh();
   };
 
+  const handleRecordDeleted = (event: ServiceEvent, outcome: 'deleted' | 'already-deleted') => {
+    // The loaded pages stay valid without the deleted record; a record that was already
+    // gone means the history changed elsewhere, so load it again.
+    if (outcome === 'deleted') historyState.removeEvent(event.id);
+    else historyState.reload();
+    // The server action revalidated the routes; the parent recomputes the last
+    // replacement and the forecast from the remaining records.
+    if (onRefresh) onRefresh();
+  };
+
   // Show only relevant interval based on measurement_mode
   const intervals: string[] = [];
   if (item.measurement_mode === 'km' && item.interval_km) {
@@ -391,8 +323,9 @@ export default function ItemDetailsSheet({
     intervals.push(RU.items.everyDays.replace('{value}', formatNumber(item.interval_days)));
   }
 
-  // Get last event: from prop, or from history if available
-  const lastEvent = propLastEvent || (history.length > 0 ? history[0] : null);
+  // Last replacement: from the server, or from the loaded history. Checks and top-ups
+  // never count — they must not reset the interval or the forecast.
+  const lastEvent: ServiceEvent | null = propLastEvent || findLastReplacement(history);
 
   // Calculate status using new helper (forecasts run on the estimated odometer)
   const currentMileage = estimatedOdometer.estimatedKm;
@@ -503,21 +436,29 @@ export default function ItemDetailsSheet({
           {activeTab === 'history' ? (
             <div className="item-history">
             <h3 className="item-history-title">{RU.items.historyTitle}</h3>
-            {isLoading ? (
+            {historyState.isLoading ? (
               <div className="item-history-loading">
 
                 {t("Загрузка…")}
               </div>
-            ) : error ? (
+            ) : historyState.error ? (
               <div className="item-history-error">
-                {errorMessageText(error)}
+                {errorMessageText(historyState.error)}
               </div>
-            ) : history.length === 0 ? (
+            ) : historyState.isEmpty ? (
               <div className="item-history-empty">
                 {RU.items.historyEmpty}
               </div>
             ) : (
-              <ItemHistoryList events={history} />
+              <ItemHistoryList
+                events={history}
+                previousReplacement={historyState.previousReplacement}
+                hasMore={historyState.hasMore}
+                isLoadingMore={historyState.isLoadingMore}
+                loadMoreFailed={historyState.loadMoreFailed}
+                onLoadMore={historyState.loadMore}
+                onDeleted={handleRecordDeleted}
+              />
             )}
             </div>
           ) : (
@@ -694,14 +635,14 @@ export default function ItemDetailsSheet({
             {RU.items.settingsButton}
           </button>
           <div className="item-details-action-primary" onClick={(e) => e.stopPropagation()}>
-            <MarkReplacementButton
+            <AddServiceRecordButton
               serviceItemId={item.id}
               serviceItemTitle={item.title}
               defaultMileage={latestOdometer?.mileage_km ?? null}
               lastReadingAt={latestOdometer?.occurred_at ?? null}
               disabled={!latestOdometer}
               disabledHint={RU.items.noMileageHint}
-              onSuccess={handleMarkReplacementSuccess}
+              onSuccess={handleRecordSuccess}
             />
           </div>
         </div>

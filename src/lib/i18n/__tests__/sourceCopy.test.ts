@@ -39,7 +39,7 @@ const item: ServiceItem = {
   id: 'item', user_id: 'user', title: 'Моё название', interval_km: 10000, interval_days: null,
   notify_before_days: 30, notify_before_km: null, measurement_mode: 'km', note: 'Моя заметка', is_active: true, created_at: '2026-01-01T00:00:00Z',
 };
-const event: ServiceEvent = { id: 'event', user_id: 'user', service_item_id: 'item', mileage_km: 100000, occurred_at: '2026-01-01T12:00:00Z', note: 'Мой комментарий', created_at: '2026-01-01T12:00:00Z' };
+const event: ServiceEvent = { id: 'event', user_id: 'user', service_item_id: 'item', mileage_km: 100000, occurred_at: '2026-01-01T12:00:00Z', note: 'Мой комментарий', created_at: '2026-01-01T12:00:00Z', kind: 'replacement', amount_liters: null };
 describe('system text from the unchanged calculation engine', () => {
   it.each(['km', 'calendar'] as const)('localizes every %s status without changing calculations or personal text', mode => {
     const configured = { ...item, measurement_mode: mode, interval_km: mode === 'km' ? 10000 : null, interval_days: mode === 'calendar' ? 365 : null };

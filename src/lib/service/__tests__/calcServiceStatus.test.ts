@@ -30,6 +30,8 @@ function createServiceEvent(overrides: Partial<ServiceEvent>): ServiceEvent {
     mileage_km: 150000,
     note: null,
     created_at: '2026-01-01T00:00:00Z',
+    kind: 'replacement',
+    amount_liters: null,
     ...overrides,
   };
 }

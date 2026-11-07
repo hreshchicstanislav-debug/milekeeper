@@ -33,7 +33,7 @@ export default function HomeNeedsFirstReplacementBlock({
       <h2 className="needs-first-replacement-title">{t("Нужно отметить первую замену")}</h2>
       <p className="needs-first-replacement-subtitle">
 
-        {t("Чтобы начать отсчёт, нажми «Отметить замену» хотя бы один раз.")}
+        {t("Чтобы начать отсчёт, нажми «Добавить запись» и выбери «Замена».")}
       </p>
       <div className="needs-first-replacement-group">
         <div className="needs-first-replacement-list">

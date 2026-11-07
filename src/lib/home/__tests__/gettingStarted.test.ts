@@ -6,7 +6,7 @@ import type { OdometerEntry, ServiceItem, ServiceEvent } from '@/lib/db/types';
 const now = new Date('2026-10-11T12:00:00Z');
 const reading = (date: string, mileage = 120000): OdometerEntry => ({ id: date, user_id: 'test', occurred_at: date, mileage_km: mileage, note: null, created_at: date });
 const item: ServiceItem = { id: 'oil', user_id: 'test', title: 'My own title', measurement_mode: 'km', interval_km: 10000, interval_days: null, notify_before_days: 30, notify_before_km: null, is_active: true, note: null, created_at: now.toISOString() };
-const event: ServiceEvent = { id: 'replacement', user_id: 'test', service_item_id: item.id, occurred_at: '2026-10-01T12:00:00Z', mileage_km: 115000, note: null, created_at: now.toISOString() };
+const event: ServiceEvent = { id: 'replacement', user_id: 'test', service_item_id: item.id, occurred_at: '2026-10-01T12:00:00Z', mileage_km: 115000, note: null, created_at: now.toISOString(), kind: 'replacement', amount_liters: null };
 const empty = { loaded: true, maxMileageEntry: null, odometerEntries: [], serviceItems: [], lastEventsMap: {}, dailyRate: null };
 const withReading = { ...empty, maxMileageEntry: reading(now.toISOString()), odometerEntries: [reading(now.toISOString())] };
 const withItem = { ...withReading, serviceItems: [item], lastEventsMap: { oil: null } };

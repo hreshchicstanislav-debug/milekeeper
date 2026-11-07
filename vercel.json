@@ -1,9 +1,7 @@
 {
   "regions": ["syd1"],
   "git": {
-    "deploymentEnabled": {
-      "main": false
-    }
+    "deploymentEnabled": false
   },
   "crons": [
     {

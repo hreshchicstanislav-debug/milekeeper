@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildItemHistory,
+  compareTimestamps,
+  timestampNanos,
   computeReplacementIntervals,
-  ITEM_HISTORY_FETCH_LIMIT,
-  ITEM_HISTORY_VISIBLE_LIMIT,
+  mergeHistoryPages,
   type HistoryEvent,
 } from '../replacementIntervals';
+import type { ServiceEventKind } from '@/lib/db/types';
 
 const ev = (id: string, occurred_at: string, mileage_km: number): HistoryEvent => ({ id, occurred_at, mileage_km });
 
@@ -74,37 +76,107 @@ describe('computeReplacementIntervals', () => {
   });
 });
 
-describe('buildItemHistory (API limit)', () => {
-  // Newest first, like /api/service-events; 1 000 km between replacements.
-  const history = (count: number) => Array.from({ length: count }, (_, i) => {
-    const n = count - i; // n-th replacement
-    return ev(`e${n}`, new Date(Date.UTC(2020, 0, n)).toISOString(), 100000 + n * 1000);
+describe('kinds: checks and top-ups never count as replacements', () => {
+  const k = (id: string, date: string, km: number, kind: ServiceEventKind): HistoryEvent => ({ ...ev(id, date, km), kind });
+
+  it('skips checks and top-ups by default (kind), and treats a missing kind as replacement', () => {
+    const result = computeReplacementIntervals([
+      ev('legacy', '2026-01-01T00:00:00Z', 100000),
+      k('t', '2026-02-01T00:00:00Z', 101000, 'top_up'),
+      k('c', '2026-03-01T00:00:00Z', 102000, 'check'),
+      k('r', '2026-06-01T00:00:00Z', 110000, 'replacement'),
+    ], { complete: true });
+    expect(result.get('legacy')).toEqual({ kind: 'first' });
+    expect(result.get('t')).toEqual({ kind: 'not-replacement' });
+    expect(result.get('c')).toEqual({ kind: 'not-replacement' });
+    expect(result.get('r')).toEqual({ kind: 'interval', km: 10000 });
   });
 
-  it('fetches exactly one record more than it shows', () => {
-    expect(ITEM_HISTORY_FETCH_LIMIT).toBe(ITEM_HISTORY_VISIBLE_LIMIT + 1);
+  it('mixed history: intervals connect consecutive replacements only', () => {
+    const newestFirst = [
+      k('c3', '2026-09-01T00:00:00Z', 121500, 'check'),
+      k('r3', '2026-08-01T00:00:00Z', 120000, 'replacement'),
+      k('t2', '2026-06-01T00:00:00Z', 116000, 'top_up'),
+      k('c2', '2026-05-01T00:00:00Z', 114000, 'check'),
+      k('r2', '2026-04-01T00:00:00Z', 110500, 'replacement'),
+      k('t1', '2026-02-01T00:00:00Z', 104000, 'top_up'),
+      k('r1', '2026-01-01T00:00:00Z', 100000, 'replacement'),
+    ];
+    const rows = buildItemHistory(newestFirst, null);
+    expect(Object.fromEntries(rows.map(({ event, interval }) => [event.id, interval]))).toEqual({
+      c3: { kind: 'not-replacement' }, r3: { kind: 'interval', km: 9500 }, t2: { kind: 'not-replacement' },
+      c2: { kind: 'not-replacement' }, r2: { kind: 'interval', km: 10500 }, t1: { kind: 'not-replacement' },
+      r1: { kind: 'first' },
+    });
+  });
+});
+
+describe('buildItemHistory (pages + previous replacement)', () => {
+  const k = (id: string, day: number, km: number, kind: ServiceEventKind): HistoryEvent => ({
+    ...ev(id, new Date(Date.UTC(2020, 0, day)).toISOString(), km), kind,
   });
 
-  it('gives the oldest visible replacement its predecessor from the extra record', () => {
-    const { rows, hasMore } = buildItemHistory(history(ITEM_HISTORY_FETCH_LIMIT));
-    expect(rows).toHaveLength(ITEM_HISTORY_VISIBLE_LIMIT);
-    expect(hasMore).toBe(true);
-    expect(rows.map((r) => r.event.id)).not.toContain('e1');
-    expect(rows.at(-1)!.event.id).toBe('e2');
-    expect(rows.at(-1)!.interval).toEqual({ kind: 'interval', km: 1000 });
-    expect(rows.every((r) => r.interval.kind === 'interval')).toBe(true);
+  it('uses the previous replacement for the oldest loaded one, however many checks lie between', () => {
+    // A full page: one replacement followed (older) by nine checks/top-ups.
+    const page = [k('r2', 30, 110000, 'replacement'),
+      ...Array.from({ length: 9 }, (_, i) => k(`x${i}`, 29 - i, 109000 - i * 100, i % 2 ? 'check' : 'top_up'))];
+    const previous = k('r1', 1, 100000, 'replacement');
+    const rows = buildItemHistory(page, previous);
+    expect(rows).toHaveLength(10);
+    expect(rows.map((r) => r.event.id)).not.toContain('r1');
+    expect(rows[0].interval).toEqual({ kind: 'interval', km: 10000 });
+    expect(rows.slice(1).every((r) => r.interval.kind === 'not-replacement')).toBe(true);
   });
 
-  it('shows "first" for the very first replacement when the whole history fits', () => {
-    const { rows, hasMore } = buildItemHistory(history(ITEM_HISTORY_VISIBLE_LIMIT));
-    expect(rows).toHaveLength(ITEM_HISTORY_VISIBLE_LIMIT);
-    expect(hasMore).toBe(false);
-    expect(rows.at(-1)!.interval).toEqual({ kind: 'first' });
+  it('shows "first" when no older replacement exists', () => {
+    const rows = buildItemHistory([k('c', 3, 100500, 'check'), k('r', 2, 100000, 'replacement')], null);
+    expect(rows.map((r) => r.interval)).toEqual([{ kind: 'not-replacement' }, { kind: 'first' }]);
   });
 
-  it('handles empty and single-record histories', () => {
-    expect(buildItemHistory([])).toEqual({ rows: [], hasMore: false });
-    const { rows } = buildItemHistory(history(1));
-    expect(rows[0].interval).toEqual({ kind: 'first' });
+  it('handles an empty history', () => {
+    expect(buildItemHistory([], null)).toEqual([]);
+  });
+
+  it('merges pages newest first without duplicates, ordering equal date and mileage by id', () => {
+    const t = '2026-04-01T09:00:00Z';
+    const a = ev('a', t, 100000), b = ev('b', t, 100000), c = ev('c', '2026-03-01T00:00:00Z', 99000);
+    expect(mergeHistoryPages([b, a], [a, c]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
+    expect(mergeHistoryPages([], [c, b, a]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('timestamps with database precision', () => {
+  it('keeps every digit of the fraction (Date.parse keeps milliseconds only)', () => {
+    expect(Date.parse('2030-07-01T09:00:00.1239+00:00')).toBe(Date.parse('2030-07-01T09:00:00.1237+00:00'));
+    expect(compareTimestamps('2030-07-01T09:00:00.1239+00:00', '2030-07-01T09:00:00.1237+00:00')).toBeGreaterThan(0);
+    expect(compareTimestamps('2030-07-01T09:00:00.000001Z', '2030-07-01T09:00:00Z')).toBeGreaterThan(0);
+    expect(timestampNanos('2030-07-01T09:00:00.000001Z')! - timestampNanos('2030-07-01T09:00:00Z')!).toBe(BigInt(1000));
+  });
+
+  it('compares instants, not text: trailing zeros, Z and offsets', () => {
+    const base = timestampNanos('2030-07-01T09:00:00.1239+00:00');
+    for (const same of [
+      '2030-07-01T09:00:00.123900+00:00', '2030-07-01T09:00:00.1239Z', '2030-07-01 09:00:00.1239+00',
+      '2030-07-01T14:30:00.1239+05:30', '2030-07-01T14:30:00.1239+0530', '2030-07-01T04:00:00.1239-05:00',
+      '2030-07-02T00:00:00.1239+15:00',
+    ]) expect(timestampNanos(same), same).toBe(base);
+    // Microseconds survive dates far from the epoch.
+    expect(compareTimestamps('1999-12-31T23:59:59.999999Z', '2000-01-01T00:00:00Z')).toBeLessThan(0);
+  });
+
+  it('agrees with Date.parse to the millisecond', () => {
+    for (const text of ['2026-03-29T01:30:00.000Z', '2026-11-05T08:00:00+05:00', '2026-01-01T00:00:00.5-03:00']) {
+      expect(timestampNanos(text), text).toBe(BigInt(Date.parse(text)) * BigInt(1_000_000));
+    }
+  });
+
+  it('does not depend on the time zone of the process', () => {
+    // The suite also runs with TZ=Asia/Almaty; only explicit offsets are used here.
+    expect(timestampNanos('2030-07-01T09:00:00Z')).toBe(BigInt(Date.UTC(2030, 6, 1, 9)) * BigInt(1_000_000));
+  });
+
+  it('unparsable timestamps tie instead of throwing', () => {
+    expect(timestampNanos('yesterday')).toBeNull();
+    expect(compareTimestamps('yesterday', '2030-07-01T09:00:00Z')).toBe(0);
   });
 });
