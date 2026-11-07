@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }));
 
+// Release B behaviour (check and top-up creatable); release A is covered in the *ReleaseA tests.
+vi.mock('@/lib/service/serviceEventKinds', async (importOriginal) =>
+  (await import('@/lib/service/__tests__/allKindsCreatable')).allKindsCreatable(await importOriginal()));
 vi.mock('@/lib/supabase/rlsServerClient', () => ({
   getRlsClientAndUserId: mocks.getClient,
 }));

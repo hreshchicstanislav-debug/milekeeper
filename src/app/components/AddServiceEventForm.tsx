@@ -11,8 +11,8 @@ import type { ServiceEventKind } from '@/lib/db/types';
 import { parseMileageInput } from '@/lib/utils/numberFormat';
 import { occurredAtFromDateInput, toDateInputValue } from '@/lib/time/datetimeLocal';
 import {
+  CREATABLE_SERVICE_EVENT_KINDS,
   parseAmountLitersInput,
-  SERVICE_EVENT_KINDS,
   SERVICE_EVENT_MIN_DATE,
   SERVICE_EVENT_NOTE_MAX_LENGTH,
 } from '@/lib/service/serviceEventKinds';
@@ -39,8 +39,10 @@ type FormError =
 interface Reading { km: number; at: string | null }
 
 /**
- * One form for every kind of service record. The user first chooses what they did
- * (nothing is preselected), then fills the fields of that kind.
+ * One form for every creatable kind of service record (`CREATABLE_SERVICE_EVENT_KINDS`).
+ * With several kinds the user first chooses what they did (nothing is preselected), then
+ * fills the fields of that kind. With a single kind (release A: replacement only) it is
+ * chosen from the start and the choice is not shown.
  *
  * The form body is mounted only while the form is open, so every opening starts from
  * fresh state built by the `useState` initializers in the very first render. There is
@@ -61,7 +63,8 @@ function AddServiceEventFormBody({
 }: AddServiceEventFormProps) {
   const { formatMileageInput, formatNumber, RU } = useCopy();
   const copy = RU.items.serviceEvent;
-  const [kind, setKind] = useState<ServiceEventKind | null>(null);
+  const hasKindChoice = CREATABLE_SERVICE_EVENT_KINDS.length > 1;
+  const [kind, setKind] = useState<ServiceEventKind | null>(() => (hasKindChoice ? null : CREATABLE_SERVICE_EVENT_KINDS[0] ?? null));
   const [date, setDate] = useState(() => toDateInputValue(new Date()));
   // What the user typed. Until they type, the field shows the last reading (see `mileageValue`).
   const [mileageKm, setMileageKm] = useState('');
@@ -255,25 +258,27 @@ function AddServiceEventFormBody({
           {notice && <div className="success-message" role="status">{notice}</div>}
           </div>
 
-          <fieldset className={`service-event-kinds${kind ? ' is-chosen' : ''}`} disabled={isSubmitting}>
-            <legend className="service-event-kinds-legend">{kind ? copy.kindLabel : copy.kindQuestion}</legend>
-            <div className="service-event-kind-options">
-              {SERVICE_EVENT_KINDS.map((option) => (
-                <label key={option} className={`service-event-kind${kind === option ? ' is-selected' : ''}`} data-kind={option}>
-                  <input
-                    type="radio"
-                    name="serviceEventKind"
-                    value={option}
-                    checked={kind === option}
-                    onChange={() => { setKind(option); setError(null); }}
-                  />
-                  <span className="service-event-kind-title">{copy.kinds[option]}</span>
-                  <span className="service-event-kind-hint">{copy.kindHints[option]}</span>
-                </label>
-              ))}
-            </div>
-            {kind && <p className="form-field-hint service-event-kind-effect" data-testid="service-event-kind-effect">{copy.kindEffect[kind]}</p>}
-          </fieldset>
+          {hasKindChoice && (
+            <fieldset className={`service-event-kinds${kind ? ' is-chosen' : ''}`} disabled={isSubmitting}>
+              <legend className="service-event-kinds-legend">{kind ? copy.kindLabel : copy.kindQuestion}</legend>
+              <div className="service-event-kind-options">
+                {CREATABLE_SERVICE_EVENT_KINDS.map((option) => (
+                  <label key={option} className={`service-event-kind${kind === option ? ' is-selected' : ''}`} data-kind={option}>
+                    <input
+                      type="radio"
+                      name="serviceEventKind"
+                      value={option}
+                      checked={kind === option}
+                      onChange={() => { setKind(option); setError(null); }}
+                    />
+                    <span className="service-event-kind-title">{copy.kinds[option]}</span>
+                    <span className="service-event-kind-hint">{copy.kindHints[option]}</span>
+                  </label>
+                ))}
+              </div>
+              {kind && <p className="form-field-hint service-event-kind-effect" data-testid="service-event-kind-effect">{copy.kindEffect[kind]}</p>}
+            </fieldset>
+          )}
 
           {kind && (
             <>

@@ -6,6 +6,9 @@ import type { ServiceEvent, ServiceItem } from '@/lib/db/types';
 const mocks = vi.hoisted(() => ({
   pathname: '/', addServiceEvent: vi.fn(), deleteServiceEvent: vi.fn(), toast: vi.fn(), fetch: vi.fn(),
 }));
+// Release B behaviour (check and top-up creatable); release A is covered in the *ReleaseA tests.
+vi.mock('@/lib/service/serviceEventKinds', async (importOriginal) =>
+  (await import('@/lib/service/__tests__/allKindsCreatable')).allKindsCreatable(await importOriginal()));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/lib/actions/serviceActions', () => ({ addServiceEvent: mocks.addServiceEvent, deleteServiceEvent: mocks.deleteServiceEvent }));
 vi.mock('../ToastProvider', () => ({ useToast: () => ({ success: mocks.toast }) }));

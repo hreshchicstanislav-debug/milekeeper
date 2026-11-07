@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServiceEvent } from '@/lib/db/types';
 
 const mocks = vi.hoisted(() => ({ pathname: '/', max: vi.fn(), entries: vi.fn(), items: vi.fn(), events: vi.fn() }));
+// Release B behaviour (check and top-up creatable); release A is covered in the *ReleaseA tests.
+vi.mock('@/lib/service/serviceEventKinds', async (importOriginal) =>
+  (await import('@/lib/service/__tests__/allKindsCreatable')).allKindsCreatable(await importOriginal()));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ refresh: vi.fn() }) }));
 type WithChildren = { children?: React.ReactNode };
 vi.mock('next/link', () => ({ default: ({ children, href }: WithChildren & { href: string }) => <a href={href}>{children}</a> }));

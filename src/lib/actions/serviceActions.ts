@@ -19,7 +19,7 @@ import type {
 import {
   checkServiceEventDate,
   isReplacementEvent,
-  isServiceEventKind,
+  isCreatableServiceEventKind,
   isValidAmountLiters,
   SERVICE_EVENT_NOTE_MAX_LENGTH,
 } from '../service/serviceEventKinds';
@@ -386,7 +386,9 @@ function revalidateServiceData() {
 }
 
 /**
- * Record a replacement, check or top-up for one of the current user's items.
+ * Record a service record of a creatable kind (`CREATABLE_SERVICE_EVENT_KINDS`) for one
+ * of the current user's items. A kind the app reads but does not allow to create yet
+ * (release A: check and top-up) is `invalid-input`, before any database access.
  *
  * Never writes the odometer: the mileage must not exceed the latest recorded reading,
  * otherwise the user updates the odometer separately and saves again.
@@ -398,7 +400,7 @@ export async function addServiceEvent(
   const note = typeof input?.note === 'string' ? input.note.trim() : input?.note ?? null;
   if (
     !input || typeof input.serviceItemId !== 'string' || !UUID_PATTERN.test(input.serviceItemId) ||
-    !isServiceEventKind(input.kind) ||
+    !isCreatableServiceEventKind(input.kind) ||
     !(input.occurredAt instanceof Date) || Number.isNaN(input.occurredAt.getTime()) ||
     typeof input.mileageKm !== 'number' || !Number.isInteger(input.mileageKm) || input.mileageKm <= 0 ||
     (note !== null && (typeof note !== 'string' || note.length > SERVICE_EVENT_NOTE_MAX_LENGTH))

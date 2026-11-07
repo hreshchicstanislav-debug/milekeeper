@@ -3,6 +3,7 @@ const { chromium } = require(process.env.MILEKEEPER_PLAYWRIGHT_PATH || 'playwrig
 const fs = require('fs'), assert = require('assert/strict'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
 const { createFixture } = require('./fixtures/i18n-supabase.cjs');
+const { chooseReplacement } = require('./fixtures/creatable-kinds.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-own-data-'));
 let browser, app, fixture;
 (async () => {
@@ -104,9 +105,8 @@ let browser, app, fixture;
     await page.locator('.getting-started[data-step="replacement"]').waitFor();
     await page.getByRole('link', { name: en ? 'Record last replacement' : 'Указать последнюю замену', exact: true }).click();
     await page.getByRole('button', { name: en ? 'Add record' : 'Добавить запись', exact: true }).click();
-    // Nothing is preselected: the user chooses the kind first.
-    assert.equal(await dialog.getByRole('radio', { checked: true }).count(), 0, 'Preselected record kind');
-    await dialog.getByRole('radio', { name: en ? /^Replacement/ : /^Замена/ }).check();
+    // Release B: nothing is preselected, the user chooses the kind first. Release A: no choice at all.
+    await chooseReplacement(dialog, en ? /^Replacement/ : /^Замена/);
     await dialog.getByPlaceholder(en ? 'Enter odometer reading' : 'Введите пробег').fill('115000');
     await dialog.getByRole('button', { name: en ? 'Save replacement' : 'Сохранить замену', exact: true }).click();
     await dialog.waitFor({ state: 'detached' });

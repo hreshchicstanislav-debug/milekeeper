@@ -1,8 +1,15 @@
-/** Service records (replacement / check / top-up) end to end against the local synthetic fixture. No live data. */
+/**
+ * Service records (replacement / check / top-up) end to end against the local synthetic fixture. No live data.
+ * The release under test comes from CREATABLE_SERVICE_EVENT_KINDS (see fixtures/creatable-kinds.cjs):
+ * B creates every kind (steps 3–6b), A creates replacements only and must refuse a forged check or
+ * top-up on the server (steps 3A–6bA). Paging, intervals, the forecast with existing checks and
+ * top-ups, layouts and deletion (steps 1, 2, 7, 8) run for both.
+ */
 const { chromium } = require(process.env.MILEKEEPER_PLAYWRIGHT_PATH || 'playwright');
 const fs = require('fs'), assert = require('assert/strict'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
 const { createFixture, timeKey } = require('./fixtures/i18n-supabase.cjs');
+const { release, chooseReplacement } = require('./fixtures/creatable-kinds.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-service-records-'));
 let browser, app, fixture, page, context;
 
@@ -26,6 +33,7 @@ function expectedIntervals(events) {
 }
 
 (async () => {
+  console.log(`Release ${release}: ${release === 'A' ? 'replacement only (compatible)' : 'replacement, check and top-up'}`);
   fixture = createFixture({ mutable: true });
   await new Promise((resolve, reject) => { fixture.server.once('error', reject); fixture.server.listen(54329, '127.0.0.1', resolve); });
   const root = path.resolve(__dirname, '..');
@@ -165,6 +173,7 @@ function expectedIntervals(events) {
       updated: 'Odometer updated: 120,500 km', warning: 'This is the latest replacement', volumeText: '0.5 L', kindCheck: 'Check', kindTopUp: 'Top-up',
       changeDate: 'Change date', historical: 'The selected date is earlier than the last odometer reading', futureDate: 'The date cannot be later than today',
       replacementKind: 'Replacement', saveReplacement: 'Save replacement',
+      kindQuestion: 'What did you do?', failed: 'Could not save the record. Please try again.',
     } : {
       google: 'Войти через Google', add: 'Добавить запись', more: 'Показать ещё', calc: 'Расчёт', history: 'История',
       check: /^Проверка/, topUp: /^Долив/, replacement: /^Замена/, mileage: 'Пробег, км', volume: 'Объём, л (необязательно)', comment: 'Комментарий (необязательно)',
@@ -173,6 +182,7 @@ function expectedIntervals(events) {
       updated: 'Пробег обновлён: 120 500 км', warning: 'Это последняя замена', volumeText: '0,5 л', kindCheck: 'Проверка', kindTopUp: 'Долив',
       changeDate: 'Изменить дату', historical: 'Выбранная дата раньше последнего показания одометра', futureDate: 'Дата не может быть позже сегодняшней',
       replacementKind: 'Замена', saveReplacement: 'Сохранить замену',
+      kindQuestion: 'Что вы сделали?', failed: 'Не удалось сохранить запись. Попробуйте ещё раз.',
     };
     ({ context, page } = await openIsolatedContext());
     // Regression guards (deterministic): never reuse a context across locales, and the previous one must be gone.
@@ -205,6 +215,9 @@ function expectedIntervals(events) {
     assert.deepEqual(shown.map(r => r.id), newestFirstIds(all), 'History order differs from the database order');
     const expected = expectedIntervals(all);
     for (const row of shown) assert.equal(row.interval, expected.get(row.id), 'Interval of ' + row.id);
+    // The newest records are a top-up and a check, recorded after the last replacement.
+    assert.deepEqual(shown.slice(0, 3).map(r => r.kind), ['top_up', 'check', 'replacement'], 'Fixture no longer starts with a top-up and a check');
+    const [existingTopUp, existingCheck, lastFixtureReplacement] = shown.slice(0, 3).map(r => all.find(e => e.id === r.id));
     await noOverflow('history'); await shot(locale + '-history-390');
     console.log(`PASS ${locale}: 23 mixed records over 3 pages, none lost or repeated; intervals between replacements only`);
 
@@ -216,202 +229,439 @@ function expectedIntervals(events) {
       await rows().first().waitFor();
       return text;
     };
+    /** Every row of the Calculation tab (current mileage, last replacement, forecasts). */
+    const calcText = async () => {
+      await page.getByRole('button', { name: L.calc, exact: true }).click();
+      const text = (await page.locator('.calc-row').allInnerTexts()).join(' | ');
+      await page.getByRole('button', { name: L.history, exact: true }).click();
+      await rows().first().waitFor();
+      return text;
+    };
     const baseline = await lastReplacementText();
+    // Existing checks and top-ups never count: the last replacement is the fixture's replacement
+    // behind them, not the newer top-up or check.
+    assert.match(baseline.replace(/\D/g, ''), new RegExp(lastFixtureReplacement.mileage_km + '$'), 'Last replacement is not the newest replacement: ' + baseline);
+    assert.notEqual(existingTopUp.mileage_km, lastFixtureReplacement.mileage_km);
     const odometerCount = fixture.odometer.length;
+    let dialog, firstRender;
+    console.log(`PASS ${locale}: existing top-up and check after the last replacement do not move it (${baseline})`);
 
-    // 3. Check: nothing preselected, actual reading prefilled with its date; forecast unchanged.
-    await page.getByRole('button', { name: L.add, exact: true }).click();
-    let dialog = page.getByRole('dialog').last();
-    assert.equal(await dialog.getByRole('radio', { checked: true }).count(), 0, 'Preselected kind');
-    await noOverflow('kind choice'); await shot(locale + '-choose-kind');
-    await dialog.getByRole('radio', { name: L.check }).check();
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120000');
-    assert.match(await dialog.getByTestId('service-event-last-reading').innerText(), /120.000/);
-    await dialog.getByLabel(L.comment).fill('Осмотр перед поездкой');
-    await shot(locale + '-check-form');
-    await dialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
-    await dialog.waitFor({ state: 'detached' });
-    await page.waitForFunction(() => document.querySelector('.item-history-row')?.dataset.kind === 'check');
-    assert.match(await rows().first().innerText(), /Осмотр перед поездкой/);
-    assert.equal(await lastReplacementText(), baseline, 'A check moved the last replacement');
+    if (release === 'B') {
+      // 3. Check: nothing preselected, actual reading prefilled with its date; forecast unchanged.
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      assert.equal(await dialog.getByRole('radio', { checked: true }).count(), 0, 'Preselected kind');
+      await noOverflow('kind choice'); await shot(locale + '-choose-kind');
+      await dialog.getByRole('radio', { name: L.check }).check();
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120000');
+      assert.match(await dialog.getByTestId('service-event-last-reading').innerText(), /120.000/);
+      await dialog.getByLabel(L.comment).fill('Осмотр перед поездкой');
+      await shot(locale + '-check-form');
+      await dialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => document.querySelector('.item-history-row')?.dataset.kind === 'check');
+      assert.match(await rows().first().innerText(), /Осмотр перед поездкой/);
+      assert.equal(await lastReplacementText(), baseline, 'A check moved the last replacement');
 
-    // 4. Top-up with a decimal comma; forecast unchanged.
-    await page.getByRole('button', { name: L.add, exact: true }).click();
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByRole('radio', { name: L.topUp }).check();
-    await dialog.getByLabel(L.volume).fill('0,5');
-    await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
-    await dialog.waitFor({ state: 'detached' });
-    await page.waitForFunction(() => document.querySelector('.item-history-row')?.dataset.kind === 'top_up');
-    assert.match((await rows().first().innerText()).replace(/[  ]/g, ' '), new RegExp(L.volumeText.replace('.', '\\.')));
-    assert.equal(await lastReplacementText(), baseline, 'A top-up moved the last replacement');
-    assert.equal(fixture.odometer.length, odometerCount, 'Saving a record wrote the odometer');
-    console.log(`PASS ${locale}: check and top-up (0,5) saved; last replacement and odometer unchanged`);
+      // 4. Top-up with a decimal comma; forecast unchanged.
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByRole('radio', { name: L.topUp }).check();
+      await dialog.getByLabel(L.volume).fill('0,5');
+      await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => document.querySelector('.item-history-row')?.dataset.kind === 'top_up');
+      assert.match((await rows().first().innerText()).replace(/[  ]/g, ' '), new RegExp(L.volumeText.replace('.', '\\.')));
+      assert.equal(await lastReplacementText(), baseline, 'A top-up moved the last replacement');
+      assert.equal(fixture.odometer.length, odometerCount, 'Saving a record wrote the odometer');
+      console.log(`PASS ${locale}: check and top-up (0,5) saved; last replacement and odometer unchanged`);
 
-    // 5. Mileage above the recorded odometer: not saved, update the odometer separately, return with input kept.
-    const eventsBefore = fixture.events.length;
-    await page.getByRole('button', { name: L.add, exact: true }).click();
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByRole('radio', { name: L.topUp }).check();
-    await dialog.getByLabel(L.mileage).fill('120500');
-    await dialog.getByLabel(L.volume).fill('1.25');
-    await dialog.getByLabel(L.comment).fill('После трассы');
-    await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
-    await dialog.getByText(L.above).waitFor();
-    assert.equal(fixture.events.length, eventsBefore, 'Saved above the odometer');
-    await noOverflow('above odometer'); await shot(locale + '-above-odometer');
-    await dialog.getByRole('button', { name: L.update, exact: true }).click();
-    const odometerDialog = page.getByRole('dialog', { name: L.odometerTitle });
-    await odometerDialog.waitFor();
-    assert.equal((await odometerDialog.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '120500', 'Odometer form not prefilled');
-    await shot(locale + '-update-odometer');
-    await odometerDialog.getByRole('button', { name: L.saveOdometer, exact: true }).click();
-    await odometerDialog.waitFor({ state: 'detached' });
-    await dialog.getByText(L.updated).waitFor();
-    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true);
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500');
-    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '1.25');
-    assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'После трассы');
-    await shot(locale + '-back-to-record');
-    await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
-    await dialog.waitFor({ state: 'detached' });
-    assert.equal(fixture.odometer.length, odometerCount + 1, 'Odometer must be written once, by the odometer form only');
-    assert.equal(fixture.events.length, eventsBefore + 1);
-    console.log(`PASS ${locale}: mileage above odometer rejected → "Update odometer" → returned with input kept → saved; one odometer entry`);
+      // 5. Mileage above the recorded odometer: not saved, update the odometer separately, return with input kept.
+      const eventsBefore = fixture.events.length;
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByRole('radio', { name: L.topUp }).check();
+      await dialog.getByLabel(L.mileage).fill('120500');
+      await dialog.getByLabel(L.volume).fill('1.25');
+      await dialog.getByLabel(L.comment).fill('После трассы');
+      await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
+      await dialog.getByText(L.above).waitFor();
+      assert.equal(fixture.events.length, eventsBefore, 'Saved above the odometer');
+      await noOverflow('above odometer'); await shot(locale + '-above-odometer');
+      await dialog.getByRole('button', { name: L.update, exact: true }).click();
+      const odometerDialog = page.getByRole('dialog', { name: L.odometerTitle });
+      await odometerDialog.waitFor();
+      assert.equal((await odometerDialog.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '120500', 'Odometer form not prefilled');
+      await shot(locale + '-update-odometer');
+      await odometerDialog.getByRole('button', { name: L.saveOdometer, exact: true }).click();
+      await odometerDialog.waitFor({ state: 'detached' });
+      await dialog.getByText(L.updated).waitFor();
+      assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true);
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500');
+      assert.equal(await dialog.getByLabel(L.volume).inputValue(), '1.25');
+      assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'После трассы');
+      await shot(locale + '-back-to-record');
+      await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Odometer must be written once, by the odometer form only');
+      assert.equal(fixture.events.length, eventsBefore + 1);
+      console.log(`PASS ${locale}: mileage above odometer rejected → "Update odometer" → returned with input kept → saved; one odometer entry`);
 
-    // 5b. A date before the last odometer reading must not silently take the current mileage.
-    await page.goto(itemUrl); await rows().first().waitFor();
-    const eventsBeforeHistoric = fixture.events.length;
-    await page.getByRole('button', { name: L.add, exact: true }).click();
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByRole('radio', { name: L.check }).check();
-    assert.match((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), /^120500$/);
-    await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
-    await dialog.locator('#serviceEventDate').fill('2020-01-15');
-    assert.equal(await dialog.getByLabel(L.mileage).inputValue(), '', 'Current mileage left in the field for an old date');
-    await dialog.getByTestId('service-event-historical-reading').waitFor();
-    assert.match(await dialog.getByTestId('service-event-historical-reading').innerText(), new RegExp(L.historical));
-    assert.equal(await dialog.getByRole('button', { name: L.saveCheck, exact: true }).isDisabled(), true);
-    await noOverflow('historical date'); await shot(locale + '-historical-date');
-    await dialog.getByLabel(L.mileage).fill('90000');
-    await dialog.getByLabel(L.comment).fill('Историческая проверка');
-    await dialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
-    await dialog.waitFor({ state: 'detached' });
-    assert.equal(fixture.events.length, eventsBeforeHistoric + 1);
-    const historic = fixture.events.find(e => e.note === 'Историческая проверка');
-    assert.equal(historic.mileage_km, 90000); assert.equal(historic.kind, 'check');
-    assert.match(historic.occurred_at, /^2020-01-1[45]/);
-    assert.equal(fixture.odometer.length, odometerCount + 1, 'Historical record wrote the odometer');
-    // A typed mileage is never erased by changing the date.
-    await page.getByRole('button', { name: L.add, exact: true }).click();
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByRole('radio', { name: L.check }).check();
-    await dialog.getByLabel(L.mileage).fill('110000');
-    await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
-    await dialog.locator('#serviceEventDate').fill('2020-02-01');
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '110000', 'Typed mileage was erased');
-    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
-    console.log(`PASS ${locale}: old date → empty mileage + explicit prompt; typed mileage kept; saved with the stated mileage`);
+      // 5b. A date before the last odometer reading must not silently take the current mileage.
+      await page.goto(itemUrl); await rows().first().waitFor();
+      const eventsBeforeHistoric = fixture.events.length;
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByRole('radio', { name: L.check }).check();
+      assert.match((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), /^120500$/);
+      await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+      await dialog.locator('#serviceEventDate').fill('2020-01-15');
+      assert.equal(await dialog.getByLabel(L.mileage).inputValue(), '', 'Current mileage left in the field for an old date');
+      await dialog.getByTestId('service-event-historical-reading').waitFor();
+      assert.match(await dialog.getByTestId('service-event-historical-reading').innerText(), new RegExp(L.historical));
+      assert.equal(await dialog.getByRole('button', { name: L.saveCheck, exact: true }).isDisabled(), true);
+      await noOverflow('historical date'); await shot(locale + '-historical-date');
+      await dialog.getByLabel(L.mileage).fill('90000');
+      await dialog.getByLabel(L.comment).fill('Историческая проверка');
+      await dialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.events.length, eventsBeforeHistoric + 1);
+      const historic = fixture.events.find(e => e.note === 'Историческая проверка');
+      assert.equal(historic.mileage_km, 90000); assert.equal(historic.kind, 'check');
+      assert.match(historic.occurred_at, /^2020-01-1[45]/);
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Historical record wrote the odometer');
+      // A typed mileage is never erased by changing the date.
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByRole('radio', { name: L.check }).check();
+      await dialog.getByLabel(L.mileage).fill('110000');
+      await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+      await dialog.locator('#serviceEventDate').fill('2020-02-01');
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '110000', 'Typed mileage was erased');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      console.log(`PASS ${locale}: old date → empty mileage + explicit prompt; typed mileage kept; saved with the stated mileage`);
 
-    // 5c. The server refuses a future date even if the form let it through (browser clock three days ahead).
-    // A separate context: the clock belongs to the context and must not leak into the other checks.
-    const { context: skewedContext, page: skewed } = await openIsolatedContext({ storageState: await context.storageState() });
-    await skewed.clock.setFixedTime(new Date(Date.now() + 3 * 86400000));
-    await skewed.goto(itemUrl); await skewed.locator('.item-history-row').first().waitFor();
-    await skewed.getByRole('button', { name: L.add, exact: true }).click();
-    const skewedDialog = skewed.getByRole('dialog').last();
-    await skewedDialog.getByRole('radio', { name: L.check }).check();
-    const eventsBeforeFuture = fixture.events.length;
-    await skewedDialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
-    await skewedDialog.getByText(L.futureDate).waitFor();
-    assert.equal(fixture.events.length, eventsBeforeFuture, 'A future-dated record was saved');
-    await skewedContext.close();
-    console.log(`PASS ${locale}: future date refused by the server with an understandable message`);
+      // 5c. The server refuses a future date even if the form let it through (browser clock three days ahead).
+      // A separate context: the clock belongs to the context and must not leak into the other checks.
+      const { context: skewedContext, page: skewed } = await openIsolatedContext({ storageState: await context.storageState() });
+      await skewed.clock.setFixedTime(new Date(Date.now() + 3 * 86400000));
+      await skewed.goto(itemUrl); await skewed.locator('.item-history-row').first().waitFor();
+      await skewed.getByRole('button', { name: L.add, exact: true }).click();
+      const skewedDialog = skewed.getByRole('dialog').last();
+      await skewedDialog.getByRole('radio', { name: L.check }).check();
+      const eventsBeforeFuture = fixture.events.length;
+      await skewedDialog.getByRole('button', { name: L.saveCheck, exact: true }).click();
+      await skewedDialog.getByText(L.futureDate).waitFor();
+      assert.equal(fixture.events.length, eventsBeforeFuture, 'A future-dated record was saved');
+      await skewedContext.close();
+      console.log(`PASS ${locale}: future date refused by the server with an understandable message`);
 
-    // 6. Delete: a check (forecast unchanged), then the newest replacement (with a warning; recomputed).
-    await page.goto(itemUrl); await rows().first().waitFor();
-    const checkRow = rows().filter({ hasText: 'Осмотр перед поездкой' });
-    await checkRow.locator('.item-history-delete').click();
-    await checkRow.getByRole('alertdialog').waitFor();
-    assert.equal(await checkRow.getByTestId('delete-replacement-warning').count(), 0);
-    await checkRow.getByRole('button', { name: L.cancel, exact: true }).click();
-    await checkRow.locator('.item-history-delete').click();
-    await checkRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
-    await checkRow.waitFor({ state: 'detached' });
-    assert.equal(await lastReplacementText(), baseline, 'Deleting a check moved the last replacement');
-    const replacementRow = rows().filter({ has: page.locator('.item-history-kind-replacement') }).first();
-    const replacementId = await replacementRow.getAttribute('data-event-id');
-    await replacementRow.locator('.item-history-delete').click();
-    await replacementRow.getByTestId('delete-replacement-warning').getByText(L.warning).waitFor();
-    await noOverflow('delete replacement'); await shot(locale + '-delete-replacement');
-    await replacementRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
-    await page.locator(`[data-event-id="${replacementId}"]`).waitFor({ state: 'detached' });
-    assert(!fixture.events.some(e => e.id === replacementId));
-    // The refreshed server data arrives right after the action; allow it a moment.
-    let after = await lastReplacementText();
-    for (let i = 0; i < 20 && after === baseline; i++) { await page.waitForTimeout(500); after = await lastReplacementText(); }
-    assert.notEqual(after, baseline, 'Last replacement not recomputed after deleting it');
-    assert.equal(fixture.odometer.length, odometerCount + 1, 'Deleting changed the odometer');
-    console.log(`PASS ${locale}: deleted a check (forecast unchanged) and the last replacement (recomputed: ${after})`);
+      // 6. Delete: a check (forecast unchanged), then the newest replacement (with a warning; recomputed).
+      await page.goto(itemUrl); await rows().first().waitFor();
+      const checkRow = rows().filter({ hasText: 'Осмотр перед поездкой' });
+      await checkRow.locator('.item-history-delete').click();
+      await checkRow.getByRole('alertdialog').waitFor();
+      assert.equal(await checkRow.getByTestId('delete-replacement-warning').count(), 0);
+      await checkRow.getByRole('button', { name: L.cancel, exact: true }).click();
+      await checkRow.locator('.item-history-delete').click();
+      await checkRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+      await checkRow.waitFor({ state: 'detached' });
+      assert.equal(await lastReplacementText(), baseline, 'Deleting a check moved the last replacement');
+      const replacementRow = rows().filter({ has: page.locator('.item-history-kind-replacement') }).first();
+      const replacementId = await replacementRow.getAttribute('data-event-id');
+      await replacementRow.locator('.item-history-delete').click();
+      await replacementRow.getByTestId('delete-replacement-warning').getByText(L.warning).waitFor();
+      await noOverflow('delete replacement'); await shot(locale + '-delete-replacement');
+      await replacementRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+      await page.locator(`[data-event-id="${replacementId}"]`).waitFor({ state: 'detached' });
+      assert(!fixture.events.some(e => e.id === replacementId));
+      // The refreshed server data arrives right after the action; allow it a moment.
+      let after = await lastReplacementText();
+      for (let i = 0; i < 20 && after === baseline; i++) { await page.waitForTimeout(500); after = await lastReplacementText(); }
+      assert.notEqual(after, baseline, 'Last replacement not recomputed after deleting it');
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Deleting changed the odometer');
+      console.log(`PASS ${locale}: deleted a check (forecast unchanged) and the last replacement (recomputed: ${after})`);
 
-    // 6b. Fast taps: a kind chosen right after opening, a reopen, switching kinds, the odometer
-    // form opened from the record and typed into at once, and the way back with the input kept.
-    await page.goto(itemUrl); await rows().first().waitFor();
-    let firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
-    assert.deepEqual(firstRender?.checked, [], 'Record form did not open fresh');
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByLabel(L.volume).waitFor();
-    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after opening was reset');
-    await dialog.getByLabel(L.volume).fill('0,75');
-    await dialog.getByLabel(L.mileage).fill('999999');
-    await dialog.getByLabel(L.comment).fill('Быстрый ввод');
-    await dialog.getByRole('radio', { name: L.check }).check();
-    await dialog.getByRole('radio', { name: L.topUp }).check();
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999', 'Switching kinds lost the mileage');
-    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75', 'Switching kinds lost the volume');
-    await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
-    await dialog.getByText(L.above).waitFor();
-    // The odometer form opens prefilled with 999 999; a reading typed at once must stay.
-    firstRender = await tapThenAct('dialog[open] .service-event-update-odometer', { selector: 'dialog[open] #mileageKm', value: '100000' });
-    assert.equal(firstRender?.fields.mileageKm.replace(/\D/g, ''), '999999', 'Odometer form not prefilled in its first render');
-    const fastOdometer = page.getByRole('dialog', { name: L.odometerTitle });
-    await fastOdometer.locator('#mileageGainPreview[data-gain="not-greater"]').waitFor();
-    assert.equal((await fastOdometer.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '100000', 'Odometer form overwrote the typed reading');
-    await fastOdometer.locator('.cancel-button').click();
-    await fastOdometer.waitFor({ state: 'detached' });
-    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true);
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999');
-    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75');
-    assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'Быстрый ввод');
-    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
-    // Quick reopen, choosing the same kind again: the first render must be fresh (the
-    // previous choice still checked there would swallow the tap, and a later reset clear it).
-    firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
-    assert.deepEqual(firstRender, { checked: [], fields: {} }, 'Reopened form first rendered the previous input: ' + JSON.stringify(firstRender));
-    dialog = page.getByRole('dialog').last();
-    await dialog.getByLabel(L.volume).waitFor();
-    assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after reopening was lost');
-    assert.equal(await dialog.getByLabel(L.volume).inputValue(), '', 'Reopened form kept the old volume');
-    assert.equal(await dialog.getByLabel(L.comment).inputValue(), '', 'Reopened form kept old input');
-    assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500', 'Reopened form not prefilled with the last reading');
-    await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
-    assert.equal(fixture.odometer.length, odometerCount + 1, 'Cancelled odometer form wrote a reading');
-    console.log(`PASS ${locale}: fast taps — kind kept after open and reopen, odometer input kept, record input kept on return`);
+      // 6b. Fast taps: a kind chosen right after opening, a reopen, switching kinds, the odometer
+      // form opened from the record and typed into at once, and the way back with the input kept.
+      await page.goto(itemUrl); await rows().first().waitFor();
+      firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
+      assert.deepEqual(firstRender?.checked, [], 'Record form did not open fresh');
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByLabel(L.volume).waitFor();
+      assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after opening was reset');
+      await dialog.getByLabel(L.volume).fill('0,75');
+      await dialog.getByLabel(L.mileage).fill('999999');
+      await dialog.getByLabel(L.comment).fill('Быстрый ввод');
+      await dialog.getByRole('radio', { name: L.check }).check();
+      await dialog.getByRole('radio', { name: L.topUp }).check();
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999', 'Switching kinds lost the mileage');
+      assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75', 'Switching kinds lost the volume');
+      await dialog.getByRole('button', { name: L.saveTopUp, exact: true }).click();
+      await dialog.getByText(L.above).waitFor();
+      // The odometer form opens prefilled with 999 999; a reading typed at once must stay.
+      firstRender = await tapThenAct('dialog[open] .service-event-update-odometer', { selector: 'dialog[open] #mileageKm', value: '100000' });
+      assert.equal(firstRender?.fields.mileageKm.replace(/\D/g, ''), '999999', 'Odometer form not prefilled in its first render');
+      const fastOdometer = page.getByRole('dialog', { name: L.odometerTitle });
+      await fastOdometer.locator('#mileageGainPreview[data-gain="not-greater"]').waitFor();
+      assert.equal((await fastOdometer.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '100000', 'Odometer form overwrote the typed reading');
+      await fastOdometer.locator('.cancel-button').click();
+      await fastOdometer.waitFor({ state: 'detached' });
+      assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true);
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999');
+      assert.equal(await dialog.getByLabel(L.volume).inputValue(), '0,75');
+      assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'Быстрый ввод');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      // Quick reopen, choosing the same kind again: the first render must be fresh (the
+      // previous choice still checked there would swallow the tap, and a later reset clear it).
+      firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] input[value="top_up"]' });
+      assert.deepEqual(firstRender, { checked: [], fields: {} }, 'Reopened form first rendered the previous input: ' + JSON.stringify(firstRender));
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByLabel(L.volume).waitFor();
+      assert.equal(await dialog.getByRole('radio', { name: L.topUp }).isChecked(), true, 'Kind chosen right after reopening was lost');
+      assert.equal(await dialog.getByLabel(L.volume).inputValue(), '', 'Reopened form kept the old volume');
+      assert.equal(await dialog.getByLabel(L.comment).inputValue(), '', 'Reopened form kept old input');
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500', 'Reopened form not prefilled with the last reading');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Cancelled odometer form wrote a reading');
+      console.log(`PASS ${locale}: fast taps — kind kept after open and reopen, odometer input kept, record input kept on return`);
+    } else {
+      // Release A (compatible): only a replacement can be created; the fixture's existing
+      // checks and top-ups are read, shown, deletable and never move the forecast.
+      // 3A. The form: no kind choice, the replacement fields at once.
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await chooseReplacement(dialog);
+      assert.equal(await dialog.getByText(L.kindQuestion).count(), 0, 'Release A asks for a kind');
+      assert.equal(await dialog.getByLabel(L.volume).count(), 0, 'Release A shows a top-up volume');
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120000');
+      assert.match(await dialog.getByTestId('service-event-last-reading').innerText(), /120.000/);
+      assert.equal(await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).isEnabled(), true);
+      await noOverflow('replacement form'); await shot(locale + '-replacement-form');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.events.length, all.length, 'Closing the form saved a record');
+      console.log(`PASS ${locale}: release A form — no kind choice, replacement preselected, reading prefilled`);
 
-    // 7. Mobile widths: kind segments, volume position, delete confirmation.
+      // 3B. The server refuses a check or a top-up even when the request is forged
+      // (the real server action request of this form, with its kind rewritten).
+      const eventsBeforeForged = fixture.events.length;
+      for (const [kind, rewrite] of [
+        ['check', body => body.replace('"kind":"replacement"', '"kind":"check"')],
+        ['top_up', body => body.replace('"kind":"replacement"', '"kind":"top_up"').replace('"amountLiters":null', '"amountLiters":0.5')],
+      ]) {
+        let forged = 0;
+        await page.route('**/*', async route => {
+          const request = route.request();
+          if (request.method() !== 'POST' || !request.headers()['next-action']) return route.fallback();
+          const body = request.postData() || '';
+          assert(body.includes('"kind":"replacement"') && body.includes('"amountLiters":null'), 'Unexpected server action body: ' + body);
+          const postData = rewrite(body);
+          assert.notEqual(postData, body);
+          forged++;
+          return route.continue({ postData });
+        });
+        await page.getByRole('button', { name: L.add, exact: true }).click();
+        dialog = page.getByRole('dialog').last();
+        await dialog.getByLabel(L.comment).fill('Подделанный вид ' + kind);
+        await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+        await dialog.getByText(L.failed).waitFor();
+        await page.unroute('**/*');
+        assert.equal(forged, 1, 'The forged request was not sent: ' + kind);
+        assert.equal(fixture.events.length, eventsBeforeForged, 'The server saved a forged ' + kind);
+        assert(!fixture.events.some(e => e.kind === kind && e.note?.startsWith('Подделанный')), 'Forged record stored: ' + kind);
+        await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      }
+      assert.equal(fixture.odometer.length, odometerCount, 'A refused record wrote the odometer');
+      assert.equal(await lastReplacementText(), baseline, 'A refused record moved the last replacement');
+      // Control: the same interception rewriting only the comment of a replacement is accepted,
+      // so the refusals above come from the kind, not from a broken request.
+      await page.route('**/*', async route => {
+        const request = route.request();
+        if (request.method() !== 'POST' || !request.headers()['next-action']) return route.fallback();
+        const body = request.postData() || '';
+        assert(body.includes('Контроль подмены'), 'Unexpected server action body: ' + body);
+        return route.continue({ postData: body.replace('Контроль подмены', 'Контроль подмены: тело переписано') });
+      });
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByLabel(L.comment).fill('Контроль подмены');
+      await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.unroute('**/*');
+      const control = fixture.events.find(e => e.note === 'Контроль подмены: тело переписано');
+      assert(control && control.kind === 'replacement', 'The rewritten control request was not stored');
+      assert.equal(fixture.events.length, eventsBeforeForged + 1);
+      const controlRow = page.locator(`[data-event-id="${control.id}"]`);
+      await controlRow.locator('.item-history-delete').click();
+      await controlRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+      await controlRow.waitFor({ state: 'detached' });
+      assert.equal(fixture.events.length, eventsBeforeForged);
+      let restored = await lastReplacementText();
+      for (let i = 0; i < 20 && restored !== baseline; i++) { await page.waitForTimeout(500); restored = await lastReplacementText(); }
+      assert.equal(restored, baseline, 'Removing the control replacement did not restore the last replacement');
+      console.log(`PASS ${locale}: forged check and top-up (real action request) refused by the server; nothing stored; rewritten control replacement accepted`);
+
+      // 5A. Mileage above the recorded odometer: not saved, update the odometer separately, return with input kept.
+      const eventsBefore = fixture.events.length;
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByLabel(L.mileage).fill('120500');
+      await dialog.getByLabel(L.comment).fill('После трассы');
+      await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await dialog.getByText(L.above).waitFor();
+      assert.equal(fixture.events.length, eventsBefore, 'Saved above the odometer');
+      await noOverflow('above odometer'); await shot(locale + '-above-odometer');
+      await dialog.getByRole('button', { name: L.update, exact: true }).click();
+      const odometerDialog = page.getByRole('dialog', { name: L.odometerTitle });
+      await odometerDialog.waitFor();
+      assert.equal((await odometerDialog.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '120500', 'Odometer form not prefilled');
+      await odometerDialog.getByRole('button', { name: L.saveOdometer, exact: true }).click();
+      await odometerDialog.waitFor({ state: 'detached' });
+      await dialog.getByText(L.updated).waitFor();
+      await chooseReplacement(dialog);
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120500');
+      assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'После трассы');
+      await shot(locale + '-back-to-record');
+      await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Odometer must be written once, by the odometer form only');
+      assert.equal(fixture.events.length, eventsBefore + 1);
+      const saved = fixture.events.find(e => e.note === 'После трассы');
+      assert.equal(saved.kind, 'replacement'); assert.equal(saved.mileage_km, 120500); assert.equal(saved.amount_liters, null);
+      await page.waitForFunction(() => document.querySelector('.item-history-row')?.dataset.kind === 'replacement');
+      let current = await lastReplacementText();
+      for (let i = 0; i < 20 && current === baseline; i++) { await page.waitForTimeout(500); current = await lastReplacementText(); }
+      assert.match(current.replace(/\D/g, ''), /120500$/, 'Last replacement not moved to the new replacement: ' + current);
+      console.log(`PASS ${locale}: mileage above odometer rejected → "Update odometer" → returned with input kept → replacement saved (${current})`);
+
+      // 5bA. A date before the last odometer reading must not silently take the current mileage.
+      await page.goto(itemUrl); await rows().first().waitFor();
+      const eventsBeforeHistoric = fixture.events.length;
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      assert.match((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), /^120500$/);
+      await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+      await dialog.locator('#serviceEventDate').fill('2020-01-15');
+      assert.equal(await dialog.getByLabel(L.mileage).inputValue(), '', 'Current mileage left in the field for an old date');
+      await dialog.getByTestId('service-event-historical-reading').waitFor();
+      assert.match(await dialog.getByTestId('service-event-historical-reading').innerText(), new RegExp(L.historical));
+      assert.equal(await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).isDisabled(), true);
+      await noOverflow('historical date'); await shot(locale + '-historical-date');
+      await dialog.getByLabel(L.mileage).fill('90000');
+      await dialog.getByLabel(L.comment).fill('Историческая замена');
+      await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.events.length, eventsBeforeHistoric + 1);
+      const historic = fixture.events.find(e => e.note === 'Историческая замена');
+      assert.equal(historic.mileage_km, 90000); assert.equal(historic.kind, 'replacement');
+      assert.match(historic.occurred_at, /^2020-01-1[45]/);
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Historical record wrote the odometer');
+      assert.equal(await lastReplacementText(), current, 'An older replacement became the last one');
+      // A typed mileage is never erased by changing the date.
+      await page.getByRole('button', { name: L.add, exact: true }).click();
+      dialog = page.getByRole('dialog').last();
+      await dialog.getByLabel(L.mileage).fill('110000');
+      await dialog.getByRole('button', { name: L.changeDate, exact: true }).click();
+      await dialog.locator('#serviceEventDate').fill('2020-02-01');
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '110000', 'Typed mileage was erased');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      console.log(`PASS ${locale}: old date → empty mileage + explicit prompt; typed mileage kept; older replacement does not become the last one`);
+
+      // 5cA. The server refuses a future date even if the form let it through (browser clock three days ahead).
+      const { context: skewedContext, page: skewed } = await openIsolatedContext({ storageState: await context.storageState() });
+      await skewed.clock.setFixedTime(new Date(Date.now() + 3 * 86400000));
+      await skewed.goto(itemUrl); await skewed.locator('.item-history-row').first().waitFor();
+      await skewed.getByRole('button', { name: L.add, exact: true }).click();
+      const skewedDialog = skewed.getByRole('dialog').last();
+      await chooseReplacement(skewedDialog);
+      const eventsBeforeFuture = fixture.events.length;
+      await skewedDialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await skewedDialog.getByText(L.futureDate).waitFor();
+      assert.equal(fixture.events.length, eventsBeforeFuture, 'A future-dated record was saved');
+      await skewedContext.close();
+      console.log(`PASS ${locale}: future date refused by the server with an understandable message`);
+
+      // 6A. Delete the existing top-up and check (forecast unchanged), then the new replacement
+      // (warning; the last replacement returns to the fixture's, behind the newer check and top-up).
+      await page.goto(itemUrl); await rows().first().waitFor();
+      const calcBefore = await calcText();
+      for (const event of [existingTopUp, existingCheck]) {
+        const row = page.locator(`[data-event-id="${event.id}"]`);
+        await row.locator('.item-history-delete').click();
+        await row.getByRole('alertdialog').waitFor();
+        assert.equal(await row.getByTestId('delete-replacement-warning').count(), 0, 'Replacement warning for a ' + event.kind);
+        await row.getByRole('button', { name: L.cancel, exact: true }).click();
+        await row.locator('.item-history-delete').click();
+        await row.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+        await row.waitFor({ state: 'detached' });
+        assert(!fixture.events.some(e => e.id === event.id), 'Not deleted: ' + event.kind);
+        assert.equal(await lastReplacementText(), current, 'Deleting an existing ' + event.kind + ' moved the last replacement');
+        assert.equal(await calcText(), calcBefore, 'Deleting an existing ' + event.kind + ' changed the calculation');
+      }
+      const newRow = page.locator(`[data-event-id="${saved.id}"]`);
+      await newRow.locator('.item-history-delete').click();
+      await newRow.getByTestId('delete-replacement-warning').getByText(L.warning).waitFor();
+      await noOverflow('delete replacement'); await shot(locale + '-delete-replacement');
+      await newRow.getByRole('button', { name: L.deleteRecord, exact: true }).click();
+      await newRow.waitFor({ state: 'detached' });
+      let after = await lastReplacementText();
+      for (let i = 0; i < 20 && after !== baseline; i++) { await page.waitForTimeout(500); after = await lastReplacementText(); }
+      assert.equal(after, baseline, 'Last replacement not recomputed to the previous replacement');
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Deleting changed the odometer');
+      console.log(`PASS ${locale}: deleted the existing top-up and check (forecast unchanged) and the new replacement (back to ${after})`);
+
+      // 6bA. Fast taps: input typed right after opening and reopening, the odometer form
+      // opened from the record and typed into at once, and the way back with the input kept.
+      await page.goto(itemUrl); await rows().first().waitFor();
+      firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] #serviceEventMileageKm', value: '999999' });
+      assert.deepEqual(firstRender?.checked, [], 'Release A rendered a kind choice');
+      assert.equal(firstRender?.fields.serviceEventMileageKm.replace(/\D/g, ''), '120500', 'Record form not prefilled in its first render');
+      dialog = page.getByRole('dialog').last();
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999', 'Mileage typed right after opening was reset');
+      await dialog.getByLabel(L.comment).fill('Быстрый ввод');
+      await dialog.getByRole('button', { name: L.saveReplacement, exact: true }).click();
+      await dialog.getByText(L.above).waitFor();
+      firstRender = await tapThenAct('dialog[open] .service-event-update-odometer', { selector: 'dialog[open] #mileageKm', value: '100000' });
+      assert.equal(firstRender?.fields.mileageKm.replace(/\D/g, ''), '999999', 'Odometer form not prefilled in its first render');
+      const fastOdometer = page.getByRole('dialog', { name: L.odometerTitle });
+      await fastOdometer.locator('#mileageGainPreview[data-gain="not-greater"]').waitFor();
+      assert.equal((await fastOdometer.locator('#mileageKm').inputValue()).replace(/\D/g, ''), '100000', 'Odometer form overwrote the typed reading');
+      await fastOdometer.locator('.cancel-button').click();
+      await fastOdometer.waitFor({ state: 'detached' });
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '999999');
+      assert.equal(await dialog.getByLabel(L.comment).inputValue(), 'Быстрый ввод');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      // Quick reopen with a keystroke at once: the first render is fresh and the keystroke stays.
+      firstRender = await tapThenAct('[data-add-service-record]', { selector: 'dialog[open] #serviceEventMileageKm', value: '120400' });
+      assert.deepEqual(firstRender?.checked, [], 'Reopened form rendered a kind choice');
+      assert.equal(firstRender?.fields.serviceEventMileageKm.replace(/\D/g, ''), '120500', 'Reopened form first rendered the previous input: ' + JSON.stringify(firstRender));
+      assert.equal(firstRender?.fields.serviceEventNote, '', 'Reopened form first rendered the previous comment');
+      dialog = page.getByRole('dialog').last();
+      assert.equal((await dialog.getByLabel(L.mileage).inputValue()).replace(/\D/g, ''), '120400', 'Keystroke right after reopening was lost');
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      assert.equal(fixture.odometer.length, odometerCount + 1, 'Cancelled odometer form wrote a reading');
+      console.log(`PASS ${locale}: fast taps — input kept after open and reopen, odometer input kept, record input kept on return`);
+    }
+
+    // 7. Mobile widths: kind segments (B) or the replacement form (A), volume position, delete confirmation.
     for (const [width, height] of [[320, 568], [390, 844]]) {
       await page.setViewportSize({ width, height });
       await page.goto(itemUrl); await rows().first().waitFor();
       await noOverflow('item page ' + width);
       await page.getByRole('button', { name: L.add, exact: true }).click();
       dialog = page.getByRole('dialog').last();
-      for (const name of [L.replacement, L.check, L.topUp]) {
-        await dialog.getByRole('radio', { name }).check();
-        await assertKindTitlesIntact(`${locale} ${width} ${name}`);
+      if (release === 'B') {
+        for (const name of [L.replacement, L.check, L.topUp]) {
+          await dialog.getByRole('radio', { name }).check();
+          await assertKindTitlesIntact(`${locale} ${width} ${name}`);
+        }
+        assert.equal(await dialog.locator('.service-event-kind-title', { hasText: L.replacementKind }).count(), 1);
+      } else {
+        await chooseReplacement(dialog);
       }
-      assert.equal(await dialog.locator('.service-event-kind-title', { hasText: L.replacementKind }).count(), 1);
       await noOverflow('form ' + width); await shot(`${locale}-form-${width}`);
-      await assertVisibleWithoutScrolling('#serviceEventAmount', `volume of a top-up (${locale} ${width}x${height})`);
+      if (release === 'B') await assertVisibleWithoutScrolling('#serviceEventAmount', `volume of a top-up (${locale} ${width}x${height})`);
+      else await assertVisibleWithoutScrolling('#serviceEventMileageKm', `mileage of a replacement (${locale} ${width}x${height})`);
       await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
 
       // Delete confirmation: reachable, fully visible, keyboard-accessible.
@@ -460,7 +710,7 @@ function expectedIntervals(events) {
     await rows().first().waitFor();
     await noOverflow('items → item'); await shot(locale + '-item-from-list');
     if (en) {
-      const text = (await page.locator('.item-details-page').innerText()).replace(/Моё масло двигателя|Уровень в норме|После трассы/g, '');
+      const text = (await page.locator('.item-details-page').innerText()).replace(/Моё масло двигателя|Уровень в норме|После трассы|Историческая замена/g, '');
       assert(!/[А-Яа-яЁё]/.test(text), 'Untranslated item page text: ' + text.match(/[А-Яа-яЁё][^\n]*/)?.[0]);
     }
     // 8. Deleting every loaded record while older ones exist: the rest appears, never "empty".

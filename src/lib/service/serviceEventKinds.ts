@@ -11,6 +11,20 @@ export function isServiceEventKind(value: unknown): value is ServiceEventKind {
 }
 
 /**
+ * Kinds a user may create, separate from the kinds the app reads (`SERVICE_EVENT_KINDS`).
+ *
+ * Release A (compatible): only replacements can be created, while existing checks and
+ * top-ups are read, shown, deleted and kept out of forecasts. Release B widens this list
+ * to `SERVICE_EVENT_KINDS`. Rolling B back to A therefore never needs a data change.
+ * The server action enforces this list; the form only follows it.
+ */
+export const CREATABLE_SERVICE_EVENT_KINDS: readonly ServiceEventKind[] = ['replacement'];
+
+export function isCreatableServiceEventKind(value: unknown): value is ServiceEventKind {
+  return isServiceEventKind(value) && CREATABLE_SERVICE_EVENT_KINDS.includes(value);
+}
+
+/**
  * The single predicate for "this record resets the interval". A record without a kind
  * (stored before the column existed) is a replacement, matching the database default.
  */
@@ -26,7 +40,8 @@ export function findLastReplacement<T extends { kind?: ServiceEventKind | null }
 /**
  * Largest top-up volume. This is not a product rule: it is what the column
  * `amount_liters numeric(5,2)` can hold (3 integer digits, 2 decimals). The database
- * itself only checks `amount_liters > 0`, the type does the rest.
+ * CHECK allows a volume only on a top-up and only when it is positive and not NaN
+ * (`amount_liters > 0 AND amount_liters <> 'NaN'`); the type limits the range and scale.
  */
 export const AMOUNT_LITERS_MAX = 999.99;
 /** Maximum comment length accepted from the form and by the server action. */

@@ -15,6 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * timers, no waits.
  */
 const mocks = vi.hoisted(() => ({ pathname: '/', addServiceEvent: vi.fn(), addOdometerEntry: vi.fn() }));
+// Release B behaviour (check and top-up creatable); release A is covered in the *ReleaseA tests.
+vi.mock('@/lib/service/serviceEventKinds', async (importOriginal) =>
+  (await import('@/lib/service/__tests__/allKindsCreatable')).allKindsCreatable(await importOriginal()));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/lib/actions/serviceActions', () => ({ addServiceEvent: mocks.addServiceEvent }));
 vi.mock('@/lib/actions/odometerActions', () => ({ addOdometerEntry: mocks.addOdometerEntry }));

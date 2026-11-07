@@ -3,6 +3,7 @@ const { chromium } = require(process.env.MILEKEEPER_PLAYWRIGHT_PATH || 'playwrig
 const fs = require('fs'), assert = require('assert/strict'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
 const { createFixture } = require('./fixtures/i18n-supabase.cjs');
+const { chooseReplacement } = require('./fixtures/creatable-kinds.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-i18n-'));
 let browser, dev, fixture;
 (async () => {
@@ -468,7 +469,7 @@ let browser, dev, fixture;
         await page.goto('http://localhost:3101' + prefix + '/items/' + fixture.id + '?tab=calc');
         await page.getByRole('button', { name: labels.calc, exact: true }).waitFor();
         await page.getByRole('button', { name: labels.replacement, exact: true }).click();
-        await dialog.getByRole('radio', { name: labels.replacementKind }).check();
+        await chooseReplacement(dialog, labels.replacementKind);
         await dialog.getByPlaceholder(labels.mileage).fill('0');
         await dialog.getByRole('button', { name: labels.saveReplacement, exact: true }).click();
         await dialog.getByText(labels.positiveError, { exact: true }).waitFor();
