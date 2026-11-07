@@ -4,7 +4,7 @@ const fs = require('fs'), assert = require('assert/strict'), os = require('os'),
 const { spawn } = require('child_process');
 const { createFixture, timeKey } = require('./fixtures/i18n-supabase.cjs');
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'milekeeper-service-records-'));
-let browser, app, fixture, page;
+let browser, app, fixture, page, context;
 
 /** Database order, oldest first: occurred_at (microseconds), mileage_km, id. */
 const compareOldestFirst = (a, b) => {
@@ -41,15 +41,71 @@ function expectedIntervals(events) {
   }
   assert(ready, 'Next did not start');
   browser = await chromium.launch({ ...(process.env.MILEKEEPER_CHROME_PATH ? { executablePath: process.env.MILEKEEPER_CHROME_PATH } : { channel: 'chrome' }), headless: true });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Almaty' });
-  await context.route('**/*', route => {
+  const errors = [];
+  const AUTH_COOKIES = ['mk_sb_at', 'mk_sb_rt'];
+  const authCookies = async ctx => (await ctx.cookies()).filter(c => AUTH_COOKIES.includes(c.name));
+  const usedContexts = new Set();
+  const localOnly = route => {
     const url = new URL(route.request().url());
     return ['localhost', '127.0.0.1'].includes(url.hostname) && ['3101', '54329'].includes(url.port) ? route.continue() : route.abort('blockedbyclient');
-  });
-  page = await context.newPage();
-  page.setDefaultTimeout(20000);
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
+  };
+  /** Every locale runs in its own browser context: cookies, storage and the in-memory Supabase SDK session
+   * of one locale can never leak into the next (clearing storage under a live SDK lets it re-sync and restore cookies).
+   * Scenarios inside one locale keep sharing this context and the fixture data on purpose. */
+  const openIsolatedContext = async (options = {}) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Almaty', ...options });
+    await ctx.route('**/*', localOnly);
+    const pg = await ctx.newPage();
+    pg.setDefaultTimeout(20000);
+    pg.on('pageerror', error => errors.push(error.message));
+    return { context: ctx, page: pg };
+  };
+  /** A /api/auth/sync response held by the test itself and released on demand — a promise gate, not a timer. */
+  const holdSync = async (ctx, ownerPage) => {
+    let release, arrived;
+    const gate = new Promise(resolve => { release = resolve; }), seen = new Promise(resolve => { arrived = resolve; });
+    await ctx.route('**/api/auth/sync', async route => {
+      arrived(); await gate;
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'set-cookie': 'mk_sb_at=restored-by-late-sync; Path=/' }, body: '{"ok":true}' }).catch(() => {});
+    });
+    const inFlight = ownerPage.evaluate(() => fetch('/api/auth/sync', { method: 'POST', credentials: 'same-origin' }).then(r => r.status, () => 'aborted')).catch(() => 'page-closed');
+    await seen;
+    return { release, inFlight };
+  };
+  /**
+   * Deterministic regression for the isolation (no sleeps). 1) Negative control: in ONE reused context a
+   * sync that is still in flight restores the cookies the test just cleared — the exact race, so the harness
+   * can see it. 2) The fix: a sync in flight while its context is closed cannot reach the next context.
+   */
+  const verifyContextIsolation = async () => {
+    const reused = await openIsolatedContext();
+    await reused.page.goto('http://localhost:3101/login');
+    assert.deepEqual(await authCookies(reused.context), [], 'Isolation check: fresh context already authenticated');
+    const held = await holdSync(reused.context, reused.page);
+    await reused.context.clearCookies();
+    held.release();
+    assert.equal(await held.inFlight, 200);
+    assert.equal((await authCookies(reused.context)).length, 1, 'Negative control: a late sync must restore cookies cleared in a reused context');
+    await reused.context.close();
+
+    const first = await openIsolatedContext();
+    await first.page.goto('http://localhost:3101/login');
+    const pending = await holdSync(first.context, first.page);
+    await first.context.close();
+    assert.equal(browser.contexts().includes(first.context), false, 'Isolation check: closed context is still registered');
+    assert.equal(first.page.isClosed(), true);
+    const second = await openIsolatedContext();
+    assert.notEqual(second.context, first.context);
+    pending.release();
+    assert.equal(await pending.inFlight, 'page-closed', 'The in-flight sync outlived its context');
+    await second.page.goto('http://localhost:3101/login');
+    assert.deepEqual(await authCookies(second.context), [], 'A sync in flight in a closed context reached the next one');
+    assert.equal(await second.page.evaluate(() => localStorage.length + sessionStorage.length), 0);
+    await second.context.close();
+    assert.equal(browser.contexts().length, 0, 'Isolation check left a context open');
+    console.log('PASS isolation: a late auth sync restores cookies in a reused context, but cannot cross into a new one');
+  };
+  await verifyContextIsolation();
   const noOverflow = async (label) => {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Horizontal page overflow: ' + label);
     for (const dialog of await page.locator('dialog[open]').all()) assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth + 1), false, 'Dialog overflow: ' + label);
@@ -118,8 +174,16 @@ function expectedIntervals(events) {
       changeDate: 'Изменить дату', historical: 'Выбранная дата раньше последнего показания одометра', futureDate: 'Дата не может быть позже сегодняшней',
       replacementKind: 'Замена', saveReplacement: 'Сохранить замену',
     };
+    ({ context, page } = await openIsolatedContext());
+    // Regression guards (deterministic): never reuse a context across locales, and the previous one must be gone.
+    assert(!usedContexts.has(context), locale + ': browser context reused from a previous scenario');
+    usedContexts.add(context);
+    assert.equal(browser.contexts().length, 1, locale + ': previous scenario context is still alive');
+    // A fresh context starts anonymous — no auth cookies, no persisted SDK session.
+    assert.deepEqual(await authCookies(context), [], locale + ': previous scenario leaked auth cookies');
     fixture.setScenario('mixed');
     await page.goto('http://localhost:3101' + prefix + '/login');
+    assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0, locale + ': previous scenario leaked browser storage');
     await page.getByRole('button', { name: L.google, exact: true }).click();
     await page.waitForURL('http://localhost:3101' + (prefix || '/'));
     const itemUrl = 'http://localhost:3101' + prefix + '/items/' + fixture.id;
@@ -251,13 +315,7 @@ function expectedIntervals(events) {
 
     // 5c. The server refuses a future date even if the form let it through (browser clock three days ahead).
     // A separate context: the clock belongs to the context and must not leak into the other checks.
-    const skewedContext = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Almaty', storageState: await context.storageState() });
-    await skewedContext.route('**/*', route => {
-      const url = new URL(route.request().url());
-      return ['localhost', '127.0.0.1'].includes(url.hostname) && ['3101', '54329'].includes(url.port) ? route.continue() : route.abort('blockedbyclient');
-    });
-    const skewed = await skewedContext.newPage();
-    skewed.setDefaultTimeout(20000);
+    const { context: skewedContext, page: skewed } = await openIsolatedContext({ storageState: await context.storageState() });
     await skewed.clock.setFixedTime(new Date(Date.now() + 3 * 86400000));
     await skewed.goto(itemUrl); await skewed.locator('.item-history-row').first().waitFor();
     await skewed.getByRole('button', { name: L.add, exact: true }).click();
@@ -442,12 +500,13 @@ function expectedIntervals(events) {
     assert.deepEqual(await rows().evaluateAll(list => list.map(li => li.dataset.eventId)), order.filter(id => id !== order[19]));
     console.log(`PASS ${locale}: deleting the loaded page shows the remaining 13 records; deleting the last record of page 2 leaves no gap`);
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await context.clearCookies(); await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     console.log(`PASS ${locale}: 320/390 layouts without overflow; items list → item timeline`);
+    // This locale really held a session (otherwise the next locale's "no auth cookies" guard proves nothing).
+    assert((await authCookies(context)).length > 0, locale + ': scenario never authenticated');
+    // Dispose the whole context (cookies, storage, SDK timers, in-flight sync) before the next locale starts.
+    await context.close();
   }
   assert.deepEqual(errors, [], 'Unexpected browser errors');
-  await context.close();
   console.log('Artifacts: ' + artifacts);
 })().catch(async e => {
   console.error(e); process.exitCode = 1;
