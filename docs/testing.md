@@ -34,7 +34,7 @@ npm run test:service-records:browser   # replacement / check / top-up, paging, d
 
 Run them one at a time: they share ports 3101 and 54329.
 
-Known issue: the onboarding script has an intermittent race in the test itself (it clears cookies while a session sync request may still be in flight). See section 8.2 of the [security-hardening report](security-hardening-2026-10-15.md).
+The onboarding and service-records scripts run each locale (RU, EN) in its own browser context and close it before the next one starts. Clearing cookies in a live context is unsafe: a session sync request still in flight could restore them (the former intermittent race, fixed in `1e88069` and `f31d2a7`; background in section 8.2 of the [security-hardening report](security-hardening-2026-10-15.md)). Keep this isolation when adding scenarios.
 
 ## Русский
 
@@ -68,4 +68,4 @@ npm run test:service-records:browser   # замена / проверка / до�
 
 Запускайте их по одному: они используют общие порты 3101 и 54329.
 
-Известная особенность: в onboarding-сценарии есть плавающая гонка в самом тесте (он очищает cookies, пока может выполняться запрос синхронизации сессии). См. раздел 8.2 [отчёта об усилении безопасности](security-hardening-2026-10-15.md).
+Onboarding- и service-records-сценарии запускают каждую локаль (RU, EN) в отдельном браузерном контексте и закрывают его перед следующей. Очищать cookies в живом контексте небезопасно: ещё не завершённый запрос синхронизации сессии может их восстановить (прежняя плавающая гонка, исправлена в `1e88069` и `f31d2a7`; предыстория — в разделе 8.2 [отчёта об усилении безопасности](security-hardening-2026-10-15.md)). Сохраняйте эту изоляцию при добавлении сценариев.
